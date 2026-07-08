@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CaptionChameleon - Presentation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @page {
+            size: 10in 5.625in;
+            margin: 0;
+            padding: 0;
+        }
+        
+        @media print {
+            html, body {
+                width: 10in;
+                height: 5.625in;
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+            }
+            .slide {
+                page-break-after: always;
+                page-break-inside: avoid;
+                width: 10in;
+                height: 5.625in;
+                margin: 0;
+                padding: 60px;
+                box-sizing: border-box;
+            }
+        }
+        
+        body {
+            font-family: 'Google Sans', 'Roboto', 'Helvetica', Arial, sans-serif;
+            background: #fff;
+        }
+        
+        .slide {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            page-break-after: always;
+        }
+        
+        /* Slide Backgrounds */
+        .slide-1 {
+            background: linear-gradient(135deg, #0066cc 0%, #9333ea 100%);
+        }
+        
+        .slide-2 {
+            background: linear-gradient(135deg, #f3f3f3 0%, #ffffff 100%);
+            color: #202124;
+        }
+        
+        .slide-3 {
+            background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+            color: #202124;
+        }
+        
+        .slide-4 {
+            background: linear-gradient(135deg, #f3f3f3 0%, #ffffff 100%);
+            color: #202124;
+        }
+        
+        .slide-5 {
+            background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+            color: #202124;
+        }
+        
+        .slide-6 {
+            background: linear-gradient(135deg, #f3f3f3 0%, #ffffff 100%);
+            color: #202124;
+        }
+        
+        .slide-7 {
+            background: linear-gradient(135deg, #ffffff 0%, #f9f9f9 100%);
+            color: #202124;
+        }
+        
+        .slide-8 {
+            background: linear-gradient(135deg, #00ff88 0%, #0066cc 100%);
+            color: #0f172a;
+        }
+        
+        .slide-9 {
+            background: linear-gradient(135deg, #f3f3f3 0%, #ffffff 100%);
+            color: #202124;
+        }
+        
+        /* Content Styles */
+        .content {
+            width: 100%;
+            max-width: 1000px;
+        }
+        
+        h1 {
+            font-size: 54px;
+            font-weight: 400;
+            margin-bottom: 20px;
+            letter-spacing: -1px;
+        }
+        
+        .slide-1 h1,
+        .slide-8 h1 {
+            color: white;
+            font-weight: 300;
+        }
+        
+        .slide-2 h1,
+        .slide-3 h1,
+        .slide-4 h1,
+        .slide-5 h1,
+        .slide-6 h1,
+        .slide-7 h1,
+        .slide-9 h1 {
+            color: #202124;
+        }
+        
+        .subtitle {
+            font-size: 32px;
+            font-weight: 300;
+            color: rgba(255,255,255,0.9);
+            margin-top: 10px;
+        }
+        
+        .slide-2 .subtitle,
+        .slide-3 .subtitle,
+        .slide-4 .subtitle,
+        .slide-5 .subtitle,
+        .slide-6 .subtitle,
+        .slide-7 .subtitle,
+        .slide-9 .subtitle {
+            color: #5f6368;
+        }
+        
+        h2 {
+            font-size: 44px;
+            font-weight: 400;
+            margin-bottom: 40px;
+            letter-spacing: -0.5px;
+        }
+        
+        h3 {
+            font-size: 28px;
+            font-weight: 400;
+            margin-bottom: 15px;
+        }
+        
+        .content-text {
+            font-size: 24px;
+            line-height: 1.8;
+            margin-bottom: 20px;
+        }
+        
+        ul, ol {
+            list-style: none;
+            text-align: left;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        
+        li {
+            font-size: 22px;
+            margin: 15px 0;
+            padding-left: 40px;
+            position: relative;
+            line-height: 1.6;
+        }
+        
+        li:before {
+            content: "•";
+            color: #0066cc;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .slide-2 li:before,
+        .slide-3 li:before,
+        .slide-4 li:before,
+        .slide-5 li:before,
+        .slide-6 li:before,
+        .slide-7 li:before,
+        .slide-9 li:before {
+            color: #00c3ff;
+        }
+        
+        .two-column {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        
+        .column {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .stat-box {
+            background: rgba(0,0,0,0.1);
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .slide-6 .stat-box,
+        .slide-9 .stat-box {
+            background: rgba(0,102,204,0.1);
+            border-left: 4px solid #0066cc;
+        }
+        
+        .stat {
+            font-size: 40px;
+            font-weight: 300;
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+        
+        .slide-8 .stat {
+            color: white;
+        }
+        
+        .stat-label {
+            font-size: 16px;
+            color: #5f6368;
+        }
+        
+        .slide-8 .stat-label {
+            color: rgba(255,255,255,0.8);
+        }
+        
+        .highlight {
+            color: #0066cc;
+            font-weight: 500;
+        }
+        
+        .slide-1 .highlight,
+        .slide-8 .highlight {
+            color: #00ff88;
+        }
+        
+        .emoji {
+            font-size: 48px;
+            margin-right: 10px;
+        }
+        
+        .grid-4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .grid-item {
+            background: rgba(0,102,204,0.05);
+            padding: 25px;
+            border-radius: 8px;
+            border-left: 3px solid #0066cc;
+        }
+        
+        .grid-item h4 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #0066cc;
+        }
+        
+        .grid-item p {
+            font-size: 16px;
+            color: #5f6368;
+        }
+        
+        .logo-text {
+            font-size: 18px;
+            color: #5f6368;
+            margin-top: 60px;
+        }
+        
+        .slide-8 .logo-text {
+            color: rgba(255,255,255,0.8);
+        }
+        
+        @media screen {
+            body {
+                background: #e0e0e0;
+                padding: 20px;
+            }
+            
+            .slide {
+                box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+                margin: 20px auto;
+                max-width: 1280px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Slide 1: Title -->
+    <div class="slide slide-1">
+        <div class="content">
+            <h1><span class="emoji">🦎</span>CaptionChameleon</h1>
+            <div class="subtitle">Adaptive Multi-Style Video Captioning at Scale</div>
+            <div style="color: rgba(255,255,255,0.7); margin-top: 60px; font-size: 20px;">AMD Hackathon 2024</div>
+        </div>
+    </div>
+
+    <!-- Slide 2: The Challenge -->
+    <div class="slide slide-2">
+        <div class="content">
+            <h2>The Challenge</h2>
+            <ul>
+                <li>Video content grows exponentially every year</li>
+                <li>Different audiences require different caption styles</li>
+                <li>Manual captioning is expensive and time-consuming</li>
+                <li>Traditional ML approaches require extensive labeled data</li>
+                <li>Scaling multi-style caption generation is complex</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Slide 3: Our Solution -->
+    <div class="slide slide-3">
+        <div class="content">
+            <h2>Our Solution</h2>
+            <p class="content-text"><span class="highlight">Zero-Shot Learning + Style-Conditioned Prompts</span></p>
+            <ul>
+                <li>Generate all 4 caption styles in ONE API call per video</li>
+                <li>No expensive model fine-tuning required</li>
+                <li>Parallel processing delivers 10x throughput</li>
+                <li>Production-ready Docker containerization</li>
+                <li>Cost-effective scaling to thousands of videos</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Slide 4: Four Distinctive Styles -->
+    <div class="slide slide-4">
+        <div class="content">
+            <h2>Four Perfect Styles</h2>
+            <div class="grid-4">
+                <div class="grid-item">
+                    <h4>📋 Formal</h4>
+                    <p>Professional, objective descriptions for technical documentation and formal contexts.</p>
+                </div>
+                <div class="grid-item">
+                    <h4>😏 Sarcastic</h4>
+                    <p>Dry, witty commentary with ironic undertones for entertainment and social media.</p>
+                </div>
+                <div class="grid-item">
+                    <h4>🤓 Tech Humor</h4>
+                    <p>Programming and DevOps humor for technical audiences and developer communities.</p>
+                </div>
+                <div class="grid-item">
+                    <h4>😄 Casual</h4>
+                    <p>Everyday humor accessible to general audiences without technical jargon.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 5: How It Works -->
+    <div class="slide slide-5">
+        <div class="content">
+            <h2>How It Works</h2>
+            <ul>
+                <li><span class="highlight">Frame Extraction:</span> Sample 8 frames intelligently from each video</li>
+                <li><span class="highlight">Batch Processing:</span> Generate all 4 styles in a single API request</li>
+                <li><span class="highlight">Parallel Execution:</span> Process 10 videos simultaneously</li>
+                <li><span class="highlight">Vision-Language Model:</span> Qwen3-VL 8B with zero-shot capabilities</li>
+                <li><span class="highlight">Output:</span> JSON with formatted captions for each style</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Slide 6: Architecture & Performance -->
+    <div class="slide slide-6">
+        <div class="content">
+            <h2>Performance Metrics</h2>
+            <div class="two-column">
+                <div class="stat-box">
+                    <div class="stat">~15s</div>
+                    <div class="stat-label">3 videos processed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat">570MB</div>
+                    <div class="stat-label">Image size (< 10GB limit)</div>
+                </div>
+            </div>
+            <div class="two-column">
+                <div class="stat-box">
+                    <div class="stat">4x</div>
+                    <div class="stat-label">Styles per API call</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat">10</div>
+                    <div class="stat-label">Parallel workers</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 7: Deployment Ready -->
+    <div class="slide slide-7">
+        <div class="content">
+            <h2>Production Ready</h2>
+            <ul>
+                <li><span class="highlight">Public Docker Image:</span> shadowking9021/amd-hackathon:latest</li>
+                <li><span class="highlight">Platform Verified:</span> linux/amd64 manifest certified</li>
+                <li><span class="highlight">Size Optimized:</span> 570MB (well within 10GB limit)</li>
+                <li><span class="highlight">Fully Documented:</span> Comprehensive README and examples</li>
+                <li><span class="highlight">Scalable:</span> Easily adjust parallelism and frame count</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Slide 8: Call to Action -->
+    <div class="slide slide-8">
+        <div class="content">
+            <h1 style="font-size: 64px; margin-bottom: 40px;">🚀 Ready to Deploy</h1>
+            <p class="content-text" style="color: rgba(255,255,255,0.95); margin-bottom: 40px;">
+                <strong>Docker Image:</strong><br>
+                shadowking9021/amd-hackathon:latest
+            </p>
+            <p class="content-text" style="color: rgba(255,255,255,0.9); margin-top: 60px; font-size: 28px;">
+                Process hundreds of videos • Get 4 perfect captions • Zero fine-tuning required
+            </p>
+        </div>
+    </div>
+
+    <!-- Slide 9: Thank You -->
+    <div class="slide slide-9">
+        <div class="content">
+            <h1 style="font-size: 72px;">Thank You</h1>
+            <p class="content-text" style="margin-top: 60px; color: #0066cc; font-weight: 500;">
+                CaptionChameleon: Adaptive Multi-Style Video Captioning
+            </p>
+            <p class="content-text" style="color: #5f6368;">
+                Questions? Check out the GitHub repository for complete documentation and examples.
+            </p>
+            <div class="logo-text" style="margin-top: 80px;">AMD Hackathon 2024</div>
+        </div>
+    </div>
+
+    <script>
+        // Print optimization
+        window.addEventListener('beforeprint', () => {
+            console.log('Preparing document for PDF export...');
+        });
+        
+        // Allow PDF export via Ctrl+P or Cmd+P
+        console.log('Press Ctrl+P (or Cmd+P) to export as PDF');
+    </script>
+</body>
+</html>

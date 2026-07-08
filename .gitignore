@@ -1,0 +1,126 @@
+# Environment and credentials
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# IDE - Pycharm
+.python-version
+.pytest_cache/
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDEs specific files
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+*.log
+
+# Generated outputs (can be regenerated)
+output/
+*.mp4
+
+# Docker
+docker_build_*.txt
+docker_push_*.txt
+
+# Git
+.gitattributes
+
+# Local testing
+test_local.py
+test_*.json
+debug_*.txt
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# API responses and caches
+.cache/
+cache/
+
+# Large model files (if any)
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Mistral/LLM specific
+.cache/huggingface/
+
+# Node modules (if applicable)
+node_modules/
+package-lock.json
+
+# MacOS
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+.Trash-*
+.directory
+
+# Windows
+$RECYCLE.BIN/
+ehthumbs.db
+
+# Jetbrains
+*.iws
+.gradle/
+.idea/
+
+# Misc
+.vscode-server/

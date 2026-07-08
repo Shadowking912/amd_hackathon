@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+.venv/
+venv/
+input.json
+output/
+*.mp4
+*.mov
+*.avi
