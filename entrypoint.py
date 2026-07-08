@@ -28,8 +28,10 @@ Output format (/output/results.json):
 import argparse
 import json
 import os
+import random
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlparse
@@ -43,17 +45,36 @@ DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
 
 
-def download_video(url, dest_path, timeout=30):
-    """Download a remote video to a local temporary path."""
-    response = requests.get(url, stream=True, timeout=timeout)
-    response.raise_for_status()
-    with open(dest_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=65536):
-            f.write(chunk)
+def download_video(url, dest_path, timeout=30, max_retries=3):
+    """Download a remote video to a local temporary path with exponential backoff retries."""
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.get(url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            with open(dest_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=65536):
+                    f.write(chunk)
+            return  # Success
+        except Exception as e:
+            last_error = e
+            is_retryable = (
+                "timeout" in str(e).lower() or
+                "429" in str(e) or  # Rate limit
+                "500" in str(e) or  # Server error
+                "503" in str(e)     # Service unavailable
+            )
+            if attempt < max_retries and is_retryable:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff with jitter
+                print(f"Download failed (attempt {attempt + 1}/{max_retries + 1}): {e}", file=sys.stderr)
+                print(f"Retrying in {wait_time:.1f}s...", file=sys.stderr)
+                time.sleep(wait_time)
+            else:
+                raise
 
 
-def process_one_task(task, client, model):
-    """Download a video and return captions for all its requested styles."""
+def process_one_task(task, client, model, max_retries=3):
+    """Download a video and return captions for all its requested styles with retries."""
     task_id = task.get("task_id", "unknown")
     video_url = task.get("video_url")
     styles = task.get("styles", list(STYLES))
@@ -75,7 +96,7 @@ def process_one_task(task, client, model):
 
     try:
         if parsed.scheme in ("http", "https"):
-            download_video(video_url, tmp_path, timeout=30)
+            download_video(video_url, tmp_path, timeout=30, max_retries=max_retries)
             video_path = tmp_path
         else:
             video_path = video_url
@@ -83,7 +104,7 @@ def process_one_task(task, client, model):
         frames = extract_frames(video_path, num_frames=8, max_frames=16)
         print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
 
-        captions = caption_all_styles(frames, styles, client, model=model)
+        captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries)
         for style, text in captions.items():
             print(f"  {task_id} {style}: {text}", file=sys.stderr)
 

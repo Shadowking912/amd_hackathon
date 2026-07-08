@@ -19,7 +19,9 @@ import argparse
 import base64
 import json
 import os
+import random
 import sys
+import time
 
 import cv2
 from openai import OpenAI
@@ -115,10 +117,11 @@ def extract_frames(video_path, num_frames=8, fps=None, max_frames=16):
     return frames
 
 
-def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL):
-    """Ask the model for all requested styles in a single call.
+def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retries=3):
+    """Ask the model for all requested styles in a single call with exponential backoff retries.
 
     Returns a dict mapping each style to its caption.
+    Retries up to max_retries times on transient failures (timeout, rate limit, 5xx errors).
     """
     invalid = [s for s in styles if s not in STYLES]
     if invalid:
@@ -149,18 +152,41 @@ def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL):
     # Use the highest temperature among requested styles for a livelier mixed voice.
     temperature = max(STYLES[s]["temperature"] for s in styles)
 
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": content}],
-        temperature=temperature,
-        max_tokens=512,
-        timeout=25,
-        response_format={"type": "json_object"},
-        extra_body={"thinking": {"type": "disabled"}},
-    )
-    raw = resp.choices[0].message.content.strip()
+    # Retry with exponential backoff
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": content}],
+                temperature=temperature,
+                max_tokens=512,
+                timeout=25,
+                response_format={"type": "json_object"},
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+            raw = resp.choices[0].message.content.strip()
+            break  # Success - exit retry loop
+        except Exception as e:
+            last_error = e
+            is_retryable = (
+                "timeout" in str(e).lower() or
+                "429" in str(e) or  # Rate limit
+                "500" in str(e) or  # Server error
+                "503" in str(e)     # Service unavailable
+            )
+            if attempt < max_retries and is_retryable:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff with jitter
+                print(f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}", file=sys.stderr)
+                print(f"Retrying in {wait_time:.1f}s...", file=sys.stderr)
+                time.sleep(wait_time)
+            else:
+                # Non-retryable error or max retries reached
+                raise
 
     # Try to extract JSON if the model wrapped it in markdown or reasoning text.
+    if raw is None:
+        raise ValueError(f"No response from model after {max_retries + 1} attempts")
     if raw.startswith("```"):
         raw = raw.strip("`").strip()
         if raw.lower().startswith("json"):
