@@ -85,7 +85,8 @@ cat output/results.json
 |-----|-------|--------|-------|--------|
 | `latest` | Kimi K2.6 | 8 | 76 | v1 - Original |
 | `v2` | Qwen3.7-Plus | 8 | 82 | Previous |
-| `v3` | Qwen3.7-Plus | 16 | 85 | Current |
+| `v3` | Qwen3.7-Plus | 16 | 85 | Recommended |
+| `v5` | Gemini 3.1 Flash | 16 | 81 | Current |
 
 #### Build and Run
 
@@ -95,7 +96,7 @@ docker buildx build --platform linux/amd64 -t shadowking9021/amd-hackathon:v4 --
 docker push shadowking9021/amd-hackathon:v4
 
 # Option 2: With variables (set in same shell)
-export TAG="v4"
+export TAG="v5"
 export REGISTRY="shadowking9021/amd-hackathon"
 docker buildx build --platform linux/amd64 -t $REGISTRY:$TAG --load .
 docker push $REGISTRY:$TAG
@@ -111,7 +112,9 @@ docker run \
 cat output/results.json
 ```
 
-**Current Submission Image:** `shadowking9021/amd-hackathon:v3`
+**Current Submission Image:** `shadowking9021/amd-hackathon:v3` (Qwen3.7-Plus, score 85)
+
+**Alternative:** `shadowking9021/amd-hackathon:v5` (Gemini 3.1 Flash, score 81)
 
 ### Generate Submission Materials
 

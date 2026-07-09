@@ -53,7 +53,7 @@ FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, o
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
-TASK_TIMEOUT = 30  # Timeout per task in seconds
+TASK_TIMEOUT = 60  # Timeout per task in seconds
 
 
 def download_video(url, dest_path, timeout=30, max_retries=3):

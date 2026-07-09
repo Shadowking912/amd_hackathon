@@ -40,21 +40,21 @@ STYLES = {
         ),
     },
     "sarcastic": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
             "You are a dry, deadpan narrator. Caption the video in ONE sarcastic, ironic "
             "line. Mock the obvious, stay clever not mean, never use emojis or slurs."
         ),
     },
     "humorous_tech": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
             "You are a witty software engineer. Caption the video in ONE funny line using "
             "programming / DevOps / startup humor (bugs, prod, CI, standups). Keep it PG."
         ),
     },
     "humorous_non_tech": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
             "You are a stand-up comedian. Caption the video in ONE broadly funny, everyday "
             "line anyone can enjoy. No tech jargon. Keep it PG."
@@ -156,16 +156,27 @@ def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retr
     last_error = None
     for attempt in range(max_retries + 1):
         try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": content}],
-                temperature=temperature,
-                max_tokens=512,
-                timeout=25,
-                response_format={"type": "json_object"},
-                extra_body={"thinking": {"type": "disabled"}},
-            )
-            raw = resp.choices[0].message.content.strip()
+            # Build API call kwargs
+            api_kwargs = {
+                "model": model,
+                "messages": [{"role": "user", "content": content}],
+                "temperature": temperature,
+                "max_tokens": 1024,
+                "timeout": 25,
+                "response_format": {"type": "json_object"},
+            }
+            
+            # Add model-specific parameters
+            if "fireworks" in model.lower():
+                api_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+            elif "gemini" in model.lower():
+                api_kwargs["reasoning_effort"] = "low"
+            
+            resp = client.chat.completions.create(**api_kwargs)
+            content_text = resp.choices[0].message.content
+            if content_text is None:
+                raise ValueError("Model returned empty content")
+            raw = content_text.strip()
             break  # Success - exit retry loop
         except Exception as e:
             last_error = e

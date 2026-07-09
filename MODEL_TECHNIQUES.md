@@ -12,6 +12,7 @@ This document compares different approaches to video captioning, including the t
 |---|---|---|---|---|---|---|
 | **Zero-Shot Style-Conditioned Prompting** ⭐ | Qwen3.7-Plus | None | $1.17 | **85** | 16 | `v3` |
 | Zero-Shot Style-Conditioned Prompting | Qwen3.7-Plus | None | $0.47 | 82 | 8 | `v2` |
+| Zero-Shot Style-Conditioned Prompting | Gemini 3.1 Flash Image | None | $0.30 | 81 | 16 | `v5` |
 | Zero-Shot Style-Conditioned Prompting | Kimi K2.6 | None | $2 | 76 | 8 | `latest` |
 
 ---
