@@ -10,6 +10,7 @@ This document compares different approaches to video captioning, including the t
 
 | **Technique** | **Model** | **Training Required** | **Cost per Video** | **Score** | **Frames** | **Docker Tag** |
 |---|---|---|---|---|---|---|
+| **Compositional Chain-of-Thought (CCoT)** | Qwen3.7-Plus | None | ~2x direct mode | TBD | 16 | `CAPTION_MODE=ccot` |
 | **Zero-Shot Style-Conditioned Prompting** ⭐ | Qwen3.7-Plus | None | $1.17 | **85** | 16 | `v3` |
 | Zero-Shot Style-Conditioned Prompting | Qwen3.7-Plus | None | $0.47 | 82 | 8 | `v2` |
 | Zero-Shot Style-Conditioned Prompting | Kimi K2.6 | None | $2 | 76 | 8 | `latest` |
@@ -80,3 +81,23 @@ Each style has a temperature-tuned prompt:
 - **Retry logic** — Exponential backoff for transient failures
 - **Frame sampling** — 16 intelligently distributed frames per video
 - **Style conditioning** — Temperature-tuned prompts per style (0.3-0.9)
+
+---
+
+## Optional Mode: Compositional Chain-of-Thought (CCoT)
+
+`CAPTION_MODE=ccot` uses a two-step prompting flow adapted from Mitra et al., CVPR 2024:
+
+```
+Input Video
+    ↓
+Frame Extraction
+    ↓
+Generate Scene Graph (entities, attributes, actions, relations, temporal events)
+    ↓
+Send Scene Graph + Frames + Style Prompts
+    ↓
+Receive Styled Captions
+```
+
+This mode is designed to reduce hallucination by anchoring the final captions to explicit visible objects, attributes, relationships, and temporal changes. Tradeoff: one extra API call per video.

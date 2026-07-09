@@ -16,6 +16,8 @@ Powered by advanced vision-language models and zero-shot learning, CaptionChamel
 3. **Parallel processing**: Using a thread pool executor to process multiple videos concurrently
 4. **Multi-platform deployment**: Seamless support for both local execution and containerized Docker deployment
 
+Optional `ccot` mode upgrades caption generation with Compositional Chain-of-Thought: the model first emits a compact scene graph, then captions from that graph plus the frames. This costs one extra API call per video, but anchors captions to visible objects, attributes, relationships, and temporal events.
+
 The four caption styles are carefully tuned for different audiences and contexts:
 - **Formal**: Professional, objective descriptions suitable for technical documentation
 - **Sarcastic**: Dry, witty commentary with ironic undertones
@@ -185,12 +187,17 @@ export MAX_WORKERS="10"
 export NUM_FRAMES="8"           # Frames to sample per video (default: 8)
 export MAX_FRAMES="16"          # Max frames in FPS mode (default: 16)
 export FRAME_FPS=""             # Frame rate (fps). Leave empty for adaptive mode
+export CAPTION_MODE="zero_shot" # zero_shot or ccot
 ```
 
 **Frame Extraction Settings:**
 - **NUM_FRAMES**: Number of frames to extract from each video (default: 8)
 - **MAX_FRAMES**: Maximum frames when using FPS mode (default: 16)
 - **FRAME_FPS**: Sampling rate in frames-per-second. Leave empty for adaptive mode (intelligently spaced frames)
+
+**Caption Mode:**
+- **zero_shot**: Current one-pass style-conditioned captioning. Fastest and lowest cost.
+- **ccot**: Compositional Chain-of-Thought. First generates a scene graph, then captions from it. Better factual anchoring, one extra API call per video.
 
 ## Running Locally
 
@@ -245,6 +252,16 @@ Or with explicit arguments:
 python entrypoint.py \
   --input input.json \
   --output output/results.json \
+  --max-workers 10
+```
+
+Run with CCoT mode:
+
+```bash
+python entrypoint.py \
+  --input input.json \
+  --output output/results.json \
+  --caption-mode ccot \
   --max-workers 10
 ```
 
@@ -469,6 +486,7 @@ docker ps  # test connectivity
 | `NUM_FRAMES` | No | `8` | Frames to extract per video |
 | `MAX_FRAMES` | No | `16` | Max frames in FPS mode |
 | `FRAME_FPS` | No | `` (empty) | Sampling rate in fps. Empty = adaptive mode |
+| `CAPTION_MODE` | No | `zero_shot` | `zero_shot` for direct prompting, `ccot` for scene graph then caption |
 
 ## Performance Metrics
 

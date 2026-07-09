@@ -43,13 +43,17 @@ from openai import OpenAI
 # Load environment variables from .env file BEFORE importing zero_shot (which reads env vars at module level)
 load_dotenv()
 
-from zero_shot import STYLES, caption_all_styles, extract_frames
+from ccot import caption_all_styles as caption_all_styles_ccot
+from ccot import normalize_caption_mode
+from zero_shot import STYLES, caption_all_styles as caption_all_styles_zero_shot, extract_frames
 
 # Frame extraction settings
 NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
 _frame_fps = os.environ.get("FRAME_FPS", "").strip()
 FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps
+DEFAULT_CAPTION_MODE = "zero_shot"
+CAPTION_MODE = normalize_caption_mode(os.environ.get("CAPTION_MODE", DEFAULT_CAPTION_MODE))
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
@@ -84,7 +88,7 @@ def download_video(url, dest_path, timeout=30, max_retries=3):
                 raise
 
 
-def process_one_task(task, client, model, max_retries=3):
+def process_one_task(task, client, model, caption_mode=CAPTION_MODE, max_retries=3):
     """Download a video and return captions for all its requested styles with retries."""
     task_id = task.get("task_id", "unknown")
     video_url = task.get("video_url")
@@ -115,7 +119,8 @@ def process_one_task(task, client, model, max_retries=3):
         frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
         print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
 
-        captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries)
+        captioner = caption_all_styles_ccot if caption_mode == "ccot" else caption_all_styles_zero_shot
+        captions = captioner(frames, styles, client, model=model, max_retries=max_retries)
         for style, text in captions.items():
             print(f"  {task_id} {style}: {text}", file=sys.stderr)
 
@@ -125,7 +130,7 @@ def process_one_task(task, client, model, max_retries=3):
             os.remove(tmp_path)
 
 
-def process_tasks(tasks, max_workers=10):
+def process_tasks(tasks, max_workers=10, caption_mode=CAPTION_MODE):
     """Process tasks in parallel with a thread pool."""
     # Check for required environment variables
     required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
@@ -141,6 +146,9 @@ def process_tasks(tasks, max_workers=10):
     allowed_models = os.environ["ALLOWED_MODELS"].split(",")
     model = allowed_models[0].strip()
 
+    caption_mode = normalize_caption_mode(caption_mode)
+    print(f"Caption mode: {caption_mode}", file=sys.stderr)
+
     client = OpenAI(
         api_key=api_key,
         base_url=base_url,
@@ -150,7 +158,7 @@ def process_tasks(tasks, max_workers=10):
     failed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(process_one_task, task, client, model): task
+            executor.submit(process_one_task, task, client, model, caption_mode=caption_mode): task
             for task in tasks
         }
         for future in as_completed(futures):
@@ -195,6 +203,14 @@ def main():
             default=int(os.environ.get("MAX_WORKERS", "10")),
             help="Number of videos to process in parallel (default: 10)",
         )
+        parser.add_argument(
+            "--caption-mode",
+            "--caption_mode",
+            dest="caption_mode",
+            default=os.environ.get("CAPTION_MODE", CAPTION_MODE),
+            choices=("zero_shot", "ccot"),
+            help="Captioning mode: zero_shot or ccot (default: CAPTION_MODE or zero_shot)",
+        )
         args, _ = parser.parse_known_args()  # ignore unknown args instead of crashing
 
         # Resolve input path: --tasks-path > --input > env var > fixed default
@@ -224,7 +240,7 @@ def main():
             sys.exit(1)
 
         print(f"Processing {len(tasks)} task(s)...", file=sys.stderr)
-        results, failed = process_tasks(tasks, max_workers=args.max_workers)
+        results, failed = process_tasks(tasks, max_workers=args.max_workers, caption_mode=args.caption_mode)
 
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

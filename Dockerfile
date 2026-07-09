@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code.
 COPY zero_shot.py .
+COPY ccot.py .
 COPY entrypoint.py .
 
 # Copy environment configuration bundled with the container.
@@ -18,9 +19,11 @@ COPY .env .
 # NUM_FRAMES: Number of frames to sample from each video (default: 8)
 # MAX_FRAMES: Maximum frames if using FPS mode (default: 16)
 # FRAME_FPS: Frame sampling rate in fps. Set to None for adaptive mode (default: None)
+# CAPTION_MODE: zero_shot for one-pass captioning, ccot for scene graph then caption
 ENV NUM_FRAMES=16
 ENV MAX_FRAMES=16
 ENV FRAME_FPS=""
+ENV CAPTION_MODE="ccot"
 
 # Create input/output directories for mounted volumes.
 RUN mkdir -p /input /output
