@@ -40,10 +40,10 @@ import requests
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from zero_shot import STYLES, caption_all_styles, extract_frames
-
-# Load environment variables from .env file bundled with container
+# Load environment variables from .env file BEFORE importing zero_shot (which reads env vars at module level)
 load_dotenv()
+
+from zero_shot import STYLES, caption_all_styles, extract_frames
 
 # Frame extraction settings
 NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
@@ -125,7 +125,7 @@ def process_one_task(task, client, model, max_retries=3):
             os.remove(tmp_path)
 
 
-def process_tasks(tasks, max_workers=15):
+def process_tasks(tasks, max_workers=10):
     """Process tasks in parallel with a thread pool."""
     # Check for required environment variables
     required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
