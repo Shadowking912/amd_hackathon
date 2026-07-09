@@ -37,9 +37,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from dotenv import load_dotenv
 from openai import OpenAI
 
 from zero_shot import STYLES, caption_all_styles, extract_frames
+
+# Load environment variables from .env file bundled with container
+load_dotenv()
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
@@ -116,6 +120,15 @@ def process_one_task(task, client, model, max_retries=3):
 
 def process_tasks(tasks, max_workers=10):
     """Process tasks in parallel with a thread pool."""
+    # Check for required environment variables
+    required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
+    missing = [var for var in required_vars if not os.environ.get(var)]
+    if missing:
+        raise RuntimeError(
+            f"Missing required environment variables: {', '.join(missing)}\n"
+            "Set these before running the container."
+        )
+    
     api_key = os.environ["FIREWORKS_API_KEY"]
     base_url = os.environ["FIREWORKS_BASE_URL"]
     allowed_models = os.environ["ALLOWED_MODELS"].split(",")
@@ -127,6 +140,7 @@ def process_tasks(tasks, max_workers=10):
     )
 
     results = []
+    failed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(process_one_task, task, client, model): task
@@ -137,57 +151,84 @@ def process_tasks(tasks, max_workers=10):
                 result = future.result()
                 if result is not None:
                     results.append(result)
+                else:
+                    failed += 1
             except Exception as exc:
                 task_id = futures[future].get("task_id", "unknown")
                 print(f"Task {task_id} failed: {exc}", file=sys.stderr)
+                failed += 1
 
     # Preserve input order.
     order = {task.get("task_id", "unknown"): i for i, task in enumerate(tasks)}
     results.sort(key=lambda r: order.get(r["task_id"], float("inf")))
-    return results
+    return results, failed
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Batch stylistic video captioning. Defaults match the Docker harness paths."
-    )
-    parser.add_argument(
-        "--input",
-        default=os.environ.get("INPUT_PATH", DEFAULT_INPUT_PATH),
-        help=f"Path to tasks JSON (default: {DEFAULT_INPUT_PATH})",
-    )
-    parser.add_argument(
-        "--output",
-        default=os.environ.get("OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
-        help=f"Path to results JSON (default: {DEFAULT_OUTPUT_PATH})",
-    )
-    parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=int(os.environ.get("MAX_WORKERS", "10")),
-        help="Number of videos to process in parallel (default: 10)",
-    )
-    args = parser.parse_args()
+    try:
+        parser = argparse.ArgumentParser(
+            description="Batch stylistic video captioning. Defaults match the Docker harness paths.",
+            add_help=True,
+        )
+        # Accept all known argument name variants used by different judge platforms
+        parser.add_argument("--input", default=None, help="Path to tasks JSON")
+        parser.add_argument("--tasks-path", "--tasks_path", dest="tasks_path", default=None, help="Path to tasks JSON")
+        parser.add_argument("--output", default=None, help="Path to results JSON")
+        parser.add_argument("--results-path", "--results_path", dest="results_path", default=None, help="Path to results JSON")
+        parser.add_argument(
+            "--max-workers",
+            type=int,
+            default=int(os.environ.get("MAX_WORKERS", "10")),
+            help="Number of videos to process in parallel (default: 10)",
+        )
+        args, _ = parser.parse_known_args()  # ignore unknown args instead of crashing
 
-    input_path = args.input
-    output_path = args.output
+        # Resolve input path: --tasks-path > --input > env var > fixed default
+        input_path = (
+            args.tasks_path
+            or args.input
+            or os.environ.get("INPUT_PATH")
+            or DEFAULT_INPUT_PATH
+        )
+        # Resolve output path: --results-path > --output > env var > fixed default
+        output_path = (
+            args.results_path
+            or args.output
+            or os.environ.get("OUTPUT_PATH")
+            or DEFAULT_OUTPUT_PATH
+        )
 
-    if not os.path.exists(input_path):
-        sys.exit(f"Input file not found: {input_path}")
+        if not os.path.exists(input_path):
+            print(f"ERROR: Input file not found: {input_path}", file=sys.stderr)
+            sys.exit(1)
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        tasks = json.load(f)
+        with open(input_path, "r", encoding="utf-8") as f:
+            tasks = json.load(f)
 
-    if not isinstance(tasks, list):
-        sys.exit(f"Expected a JSON array in {input_path}")
+        if not isinstance(tasks, list):
+            print(f"ERROR: Expected a JSON array in {input_path}", file=sys.stderr)
+            sys.exit(1)
 
-    results = process_tasks(tasks, max_workers=args.max_workers)
+        print(f"Processing {len(tasks)} task(s)...", file=sys.stderr)
+        results, failed = process_tasks(tasks, max_workers=args.max_workers)
 
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
 
-    print(f"Wrote {len(results)} result(s) to {output_path}", file=sys.stderr)
+        print(f"Wrote {len(results)} result(s) to {output_path}", file=sys.stderr)
+        if failed:
+            print(f"ERROR: {failed} task(s) failed", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

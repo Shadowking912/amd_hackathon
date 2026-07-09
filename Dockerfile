@@ -11,11 +11,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY zero_shot.py .
 COPY entrypoint.py .
 
+# Copy environment configuration bundled with the container.
+# The judge injects credentials; use your own credentials inside the container.
+COPY .env .
+
 # Create input/output directories for mounted volumes.
 RUN mkdir -p /input /output
-
-# Do NOT bundle environment secrets; the harness injects them at runtime.
-# Required env vars: FIREWORKS_API_KEY, FIREWORKS_BASE_URL, ALLOWED_MODELS
 
 # The container reads /input/tasks.json on startup and writes /output/results.json.
 ENTRYPOINT ["python", "entrypoint.py"]
