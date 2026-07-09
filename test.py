@@ -32,9 +32,3 @@ response = client.chat.completions.create(
 
 
 print(response.choices[0].message.content)
-
-# response = client.chat.completions.create(
-#     model="accounts/fireworks/models/kimi-k2p7-code",
-#     messages=[{"role": "user", "content": "Hello"}]
-# )
-# print(response.choices[0].message.content)

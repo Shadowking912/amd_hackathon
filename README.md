@@ -11,7 +11,7 @@ CaptionChameleon dynamically generates video captions in multiple distinct style
 **CaptionChameleon** is a high-performance, containerized video captioning system that adapts to any style. Like a chameleon changes colors, this system transforms the same video into four uniquely styled captions, each perfectly tailored for different audiences and contexts.
 
 Powered by advanced vision-language models and zero-shot learning, CaptionChameleon processes videos by:
-1. **Sampling frames**: Intelligently extracting 8 frames from each video for efficient processing
+1. **Sampling frames**: Intelligently extracting 16 frames from each video for efficient processing
 2. **Batch style generation**: Generating all 4 caption styles in a single API call per video, reducing latency
 3. **Parallel processing**: Using a thread pool executor to process multiple videos concurrently
 4. **Multi-platform deployment**: Seamless support for both local execution and containerized Docker deployment
@@ -79,26 +79,40 @@ cat output/results.json
 
 ### Docker Deployment (Production)
 
+#### Available Image Tags
+
+| Tag | Model | Frames | Score | Status |
+|-----|-------|--------|-------|--------|
+| `latest` | Kimi K2.6 | 8 | 76 | v1 - Original |
+| `v2` | Qwen3.7-Plus | 8 | 82 | Previous |
+| `v3` | Qwen3.7-Plus | 16 | 85 | Current |
+
+#### Build and Run
+
 ```bash
+# Set tag variable (e.g., latest, v1, v2)
+TAG="v4"
+REGISTRY="shadowking9021/amd-hackathon"
+
 # 1. Build image for linux/amd64
-docker buildx build --platform linux/amd64 -t shadowking9021/amd-hackathon:latest --load .
+docker buildx build --platform linux/amd64 -t $REGISTRY:$TAG --load .
 
 # 2. Tag and push to Docker Hub
-docker tag shadowking9021/amd-hackathon:latest shadowking9021/amd-hackathon:latest
-docker push shadowking9021/amd-hackathon:latest
+docker tag $REGISTRY:$TAG $REGISTRY:$TAG
+docker push $REGISTRY:$TAG
 
 # 3. Run container
 docker run \
   --env-file .env \
   -v $(pwd)/input:/input \
   -v $(pwd)/output:/output \
-  shadowking9021/amd-hackathon:latest
+  $REGISTRY:$TAG
 
 # 4. Check output
 cat output/results.json
 ```
 
-**Submission Image:** `shadowking9021/amd-hackathon:latest`
+**Current Submission Image:** `shadowking9021/amd-hackathon:v3`
 
 ### Generate Submission Materials
 
@@ -158,13 +172,26 @@ cat WORKFLOW.md | grep -A 20 "10. Complete Deployment Pipeline"
 Create a `.env` file in the project root:
 
 ```bash
+# API Configuration
 export FIREWORKS_API_KEY="fw_your_api_key_here"
 export FIREWORKS_BASE_URL="https://api.fireworks.ai/inference/v1"
-export ALLOWED_MODELS="accounts/fireworks/models/qwen3-vl-8b-instruct"
+export ALLOWED_MODELS="accounts/fireworks/models/qwen3p7-plus"
+
+# Paths
 export INPUT_PATH="/input/tasks.json"
 export OUTPUT_PATH="/output/results.json"
+
+# Processing
 export MAX_WORKERS="10"
+export NUM_FRAMES="8"           # Frames to sample per video (default: 8)
+export MAX_FRAMES="16"          # Max frames in FPS mode (default: 16)
+export FRAME_FPS=""             # Frame rate (fps). Leave empty for adaptive mode
 ```
+
+**Frame Extraction Settings:**
+- **NUM_FRAMES**: Number of frames to extract from each video (default: 8)
+- **MAX_FRAMES**: Maximum frames when using FPS mode (default: 16)
+- **FRAME_FPS**: Sampling rate in frames-per-second. Leave empty for adaptive mode (intelligently spaced frames)
 
 ## Running Locally
 
@@ -339,7 +366,7 @@ cat output/results.json
 ## Performance Optimization
 
 ### Local Execution
-- **Frame count**: 8 frames per video (balance between quality and speed)
+- **Frame count**: 16 frames per video (v3 - enhanced quality for better captions)
 - **Parallel workers**: 10 (adjustable via `--max-workers`)
 - **Batch API calls**: All 4 styles generated in one API call per video
 - **Thinking disabled**: Extended reasoning disabled for faster responses (Kimi 2.6+)
@@ -436,14 +463,17 @@ docker ps  # test connectivity
 |----------|----------|---------|-------------|
 | `FIREWORKS_API_KEY` | Yes | - | API key for vision-language model |
 | `FIREWORKS_BASE_URL` | No | `https://api.fireworks.ai/inference/v1` | API endpoint |
-| `ALLOWED_MODELS` | No | `accounts/fireworks/models/qwen3-vl-8b-instruct` | Model identifier |
+| `ALLOWED_MODELS` | No | `accounts/fireworks/models/qwen3p7-plus` | Model identifier |
 | `INPUT_PATH` | No | `/input/tasks.json` | Path to input tasks (local or Docker) |
 | `OUTPUT_PATH` | No | `/output/results.json` | Path to output results (local or Docker) |
 | `MAX_WORKERS` | No | `10` | Number of parallel workers |
+| `NUM_FRAMES` | No | `8` | Frames to extract per video |
+| `MAX_FRAMES` | No | `16` | Max frames in FPS mode |
+| `FRAME_FPS` | No | `` (empty) | Sampling rate in fps. Empty = adaptive mode |
 
 ## Performance Metrics
 
-**Typical execution on 3 videos (8 frames each):**
+**Typical execution on 3 videos (16 frames each):**
 - Frame extraction: ~2s per video
 - API calls: ~5-8s per video (depends on API latency)
 - Total with 10 workers: ~14-15s for 3 videos

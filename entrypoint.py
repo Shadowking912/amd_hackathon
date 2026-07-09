@@ -48,8 +48,8 @@ load_dotenv()
 # Frame extraction configuration
 NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
-_frame_fps = os.environ.get("FRAME_FPS", "")
-FRAME_FPS = float(_frame_fps) if _frame_fps else None
+_frame_fps = os.environ.get("FRAME_FPS", "").strip()
+FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
