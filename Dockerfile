@@ -15,6 +15,14 @@ COPY entrypoint.py .
 # The judge injects credentials; use your own credentials inside the container.
 COPY .env .
 
+# Frame extraction settings for v3 (16 frames for improved quality)
+# NUM_FRAMES: Number of frames to sample from each video
+# MAX_FRAMES: Maximum frames if using FPS mode
+# FRAME_FPS: Frame sampling rate in fps. Empty for adaptive mode
+ENV NUM_FRAMES=16
+ENV MAX_FRAMES=16
+ENV FRAME_FPS=""
+
 # Create input/output directories for mounted volumes.
 RUN mkdir -p /input /output
 
