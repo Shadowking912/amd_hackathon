@@ -7,7 +7,8 @@ Expected input format (/input/tasks.json):
   {
     "task_id": "v1",
     "video_url": "https://storage.example.com/clips/clip1.mp4",
-    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"]
+    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"],
+    "mode": "two_stage"
   }
 ]
 
@@ -43,9 +44,18 @@ from openai import OpenAI
 # Load environment variables from .env file BEFORE importing zero_shot (which reads env vars at module level)
 load_dotenv()
 
-from zero_shot import STYLES, caption_all_styles, extract_frames
+from two_stage import (
+    CAPTION_MODES,
+    DEFAULT_CAPTION_MODE,
+    caption_all_styles_with_mode,
+)
+from zero_shot import (
+    STYLES,
+    extract_frames,
+)
 
 # Frame extraction settings
+DEFAULT_BATCH_CAPTION_MODE = os.environ.get("CAPTION_MODE", DEFAULT_CAPTION_MODE).strip()
 NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
 _frame_fps = os.environ.get("FRAME_FPS", "").strip()
@@ -84,13 +94,14 @@ def download_video(url, dest_path, timeout=30, max_retries=3):
                 raise
 
 
-def process_one_task(task, client, model, max_retries=3):
+def process_one_task(task, client, model, caption_mode, max_retries=3):
     """Download a video and return captions for all its requested styles with retries."""
     task_id = task.get("task_id", "unknown")
     video_url = task.get("video_url")
     styles = task.get("styles", list(STYLES))
+    task_mode = str(task.get("mode", caption_mode)).strip()
 
-    print(f"Processing task {task_id}: {video_url}", file=sys.stderr)
+    print(f"Processing task {task_id}: {video_url} [{task_mode}]", file=sys.stderr)
 
     if not video_url:
         print(f"Skipping task {task_id}: missing video_url", file=sys.stderr)
@@ -99,6 +110,9 @@ def process_one_task(task, client, model, max_retries=3):
     invalid = [s for s in styles if s not in STYLES]
     if invalid:
         print(f"Skipping task {task_id}: unknown styles {invalid}", file=sys.stderr)
+        return None
+    if task_mode not in CAPTION_MODES:
+        print(f"Skipping task {task_id}: unknown caption mode {task_mode}", file=sys.stderr)
         return None
 
     parsed = urlparse(video_url)
@@ -115,7 +129,14 @@ def process_one_task(task, client, model, max_retries=3):
         frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
         print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
 
-        captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries)
+        captions = caption_all_styles_with_mode(
+            frames,
+            styles,
+            client,
+            mode=task_mode,
+            model=model,
+            max_retries=max_retries,
+        )
         for style, text in captions.items():
             print(f"  {task_id} {style}: {text}", file=sys.stderr)
 
@@ -125,7 +146,7 @@ def process_one_task(task, client, model, max_retries=3):
             os.remove(tmp_path)
 
 
-def process_tasks(tasks, max_workers=10):
+def process_tasks(tasks, max_workers=10, caption_mode=DEFAULT_BATCH_CAPTION_MODE):
     """Process tasks in parallel with a thread pool."""
     # Check for required environment variables
     required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
@@ -140,6 +161,10 @@ def process_tasks(tasks, max_workers=10):
     base_url = os.environ["FIREWORKS_BASE_URL"]
     allowed_models = os.environ["ALLOWED_MODELS"].split(",")
     model = allowed_models[0].strip()
+    if caption_mode not in CAPTION_MODES:
+        raise RuntimeError(
+            f"Unknown caption mode '{caption_mode}'. Expected one of: {', '.join(CAPTION_MODES)}"
+        )
 
     client = OpenAI(
         api_key=api_key,
@@ -150,7 +175,7 @@ def process_tasks(tasks, max_workers=10):
     failed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(process_one_task, task, client, model): task
+            executor.submit(process_one_task, task, client, model, caption_mode): task
             for task in tasks
         }
         for future in as_completed(futures):
@@ -195,6 +220,12 @@ def main():
             default=int(os.environ.get("MAX_WORKERS", "10")),
             help="Number of videos to process in parallel (default: 10)",
         )
+        parser.add_argument(
+            "--mode",
+            choices=list(CAPTION_MODES),
+            default=DEFAULT_BATCH_CAPTION_MODE,
+            help="Captioning mode: zero_shot or two_stage (default: CAPTION_MODE env or two_stage)",
+        )
         args, _ = parser.parse_known_args()  # ignore unknown args instead of crashing
 
         # Resolve input path: --tasks-path > --input > env var > fixed default
@@ -224,7 +255,7 @@ def main():
             sys.exit(1)
 
         print(f"Processing {len(tasks)} task(s)...", file=sys.stderr)
-        results, failed = process_tasks(tasks, max_workers=args.max_workers)
+        results, failed = process_tasks(tasks, max_workers=args.max_workers, caption_mode=args.mode)
 
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

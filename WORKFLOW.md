@@ -134,7 +134,7 @@ cd /home/abhi/amd_hackathon && \
 echo "=== CaptionChameleon - Submission Checklist ===" && \
 echo "" && \
 echo "✓ Code Files:" && \
-ls -lh zero_shot.py entrypoint.py Dockerfile requirements.txt 2>/dev/null && \
+ls -lh zero_shot.py two_stage.py entrypoint.py Dockerfile requirements.txt 2>/dev/null && \
 echo "" && \
 echo "✓ Documentation:" && \
 ls -lh README.md cover.svg 2>/dev/null && \
@@ -175,7 +175,8 @@ set -a && source /home/abhi/amd_hackathon/.env && set +a
 ```
 amd_hackathon/
 ├── entrypoint.py                    # Batch processing entry point
-├── zero_shot.py                     # Zero-shot captioning module
+├── zero_shot.py                     # Direct zero-shot captioning module
+├── two_stage.py                     # Factual-description + style-rewrite module
 ├── requirements.txt                 # Python dependencies
 ├── Dockerfile                       # Container definition
 ├── README.md                        # Complete documentation
@@ -195,7 +196,7 @@ amd_hackathon/
 |------|---------|
 | **Install deps** | `pip install -r requirements.txt` |
 | **Local test** | `set -a && source .env && set +a && python entrypoint.py --input input.json --output output/results.json --max-workers 10` |
-| **Single video** | `python zero_shot.py /path/to/video.mp4` |
+| **Single video** | `python zero_shot.py /path/to/video.mp4` or `python two_stage.py /path/to/video.mp4` |
 | **Build Docker** | `docker buildx build --platform linux/amd64 -t amd-hackathon:latest --load .` |
 | **Push to Hub** | `docker tag amd-hackathon:latest shadowking9021/amd-hackathon:latest && docker push shadowking9021/amd-hackathon:latest` |
 | **Run container** | `docker run --env-file .env -v $(pwd)/input:/input -v $(pwd)/output:/output shadowking9021/amd-hackathon:latest` |

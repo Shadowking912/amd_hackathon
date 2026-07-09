@@ -1,0 +1,247 @@
+"""
+Two-stage stylistic video captioning.
+
+Stage 1 asks the VLM for a factual description from frames.
+Stage 2 rewrites that description into requested styles.
+"""
+
+import argparse
+import json
+import os
+import random
+import sys
+import time
+
+from openai import OpenAI
+
+from zero_shot import STYLES, caption_all_styles, extract_frames
+
+DEFAULT_MODEL = os.environ.get("ALLOWED_MODELS", "accounts/fireworks/models/qwen3p7-plus").split(",")[0].strip()
+DEFAULT_CAPTION_MODE = os.environ.get("CAPTION_MODE", "two_stage").strip()
+
+FACTUAL_DESCRIPTION_PROMPT = (
+    "You are a factual video analyst. Watch the ordered frames and write a concise "
+    "objective description of what is visibly happening across the clip. Include the "
+    "main subjects, setting, actions, notable objects, and clear sequence changes. "
+    "Do not add jokes, opinions, intent, emotion, identity guesses, or facts not "
+    "visible in the frames. Return only the description text."
+)
+
+STYLE_REWRITE_PROMPTS = {
+    "formal": (
+        "Write ONE concise, neutral caption in complete sentences. No jokes, no "
+        "opinions, no emojis. Preserve only facts from the description."
+    ),
+    "sarcastic": (
+        "Write ONE sarcastic, ironic line in a dry deadpan voice. Mock the obvious, "
+        "stay clever not mean, never use emojis or slurs. Do not add new facts."
+    ),
+    "humorous_tech": (
+        "Write ONE funny line using programming / DevOps / startup humor (bugs, prod, "
+        "CI, standups). Keep it PG. Do not add facts beyond the description."
+    ),
+    "humorous_non_tech": (
+        "Write ONE broadly funny, everyday line anyone can enjoy. No tech jargon. "
+        "Keep it PG. Do not add facts beyond the description."
+    ),
+}
+
+
+def _create_completion_with_retries(
+    client,
+    *,
+    model,
+    messages,
+    temperature,
+    max_tokens,
+    max_retries,
+    response_format=None,
+):
+    """Call chat completions with exponential backoff for transient failures."""
+    for attempt in range(max_retries + 1):
+        try:
+            kwargs = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "timeout": 25,
+                "extra_body": {"thinking": {"type": "disabled"}},
+            }
+            if response_format is not None:
+                kwargs["response_format"] = response_format
+            resp = client.chat.completions.create(**kwargs)
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            is_retryable = (
+                "timeout" in str(e).lower()
+                or "429" in str(e)
+                or "500" in str(e)
+                or "503" in str(e)
+            )
+            if attempt < max_retries and is_retryable:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                print(f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {e}", file=sys.stderr)
+                print(f"Retrying in {wait_time:.1f}s...", file=sys.stderr)
+                time.sleep(wait_time)
+            else:
+                raise
+
+    raise ValueError(f"No response from model after {max_retries + 1} attempts")
+
+
+def _parse_style_json(raw, styles):
+    """Parse and validate model JSON for style captions."""
+    if raw.startswith("```"):
+        raw = raw.strip("`").strip()
+        if raw.lower().startswith("json"):
+            raw = raw[4:].strip()
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        raw = raw[start : end + 1]
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Model did not return valid JSON: {raw}") from exc
+
+    for style in styles:
+        if style not in parsed:
+            raise ValueError(f"Missing caption for style '{style}' in model output: {raw}")
+
+    return {style: str(parsed[style]).strip() for style in styles}
+
+
+def _validate_styles(styles):
+    invalid = [s for s in styles if s not in STYLES]
+    if invalid:
+        raise ValueError(f"Unknown styles: {', '.join(invalid)}")
+
+
+def describe_video_facts(frames_b64, client, model=DEFAULT_MODEL, max_retries=3):
+    """Stage 1: ask the VLM for a factual description of the visible video content."""
+    content = [{"type": "text", "text": FACTUAL_DESCRIPTION_PROMPT}]
+    for frame in frames_b64:
+        content.append(
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame}"}}
+        )
+
+    return _create_completion_with_retries(
+        client,
+        model=model,
+        messages=[{"role": "user", "content": content}],
+        temperature=0.2,
+        max_tokens=350,
+        max_retries=max_retries,
+    )
+
+
+def rewrite_description_all_styles(description, styles, client, model=DEFAULT_MODEL, max_retries=3):
+    """Stage 2: rewrite a factual description into each requested style."""
+    _validate_styles(styles)
+
+    style_lines = "\n".join(
+        f"{i+1}. {style}: {STYLE_REWRITE_PROMPTS[style]}"
+        for i, style in enumerate(styles)
+    )
+    prompt = (
+        "You are a caption rewriting assistant. Rewrite the factual video description "
+        f"into exactly {len(styles)} captions, one for each style listed below.\n\n"
+        "Factual description:\n"
+        f"{description}\n\n"
+        f"{style_lines}\n\n"
+        "Critical rule: use only facts present in the factual description. Do not invent "
+        "new subjects, actions, setting details, names, causes, or outcomes.\n\n"
+        "Return ONLY a valid JSON object. Do not explain, do not think out loud, "
+        "do not use markdown code blocks, do not include any text before or after the JSON. "
+        "Each key must be exactly the style name, and each value must be the caption string.\n\n"
+        "Required JSON format:\n"
+        "{" + ", ".join(f'"{style}": "..."' for style in styles) + "}"
+    )
+
+    temperature = max(STYLES[s]["temperature"] for s in styles)
+    raw = _create_completion_with_retries(
+        client,
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        max_tokens=512,
+        max_retries=max_retries,
+        response_format={"type": "json_object"},
+    )
+    return _parse_style_json(raw, styles)
+
+
+def caption_all_styles_two_stage(frames_b64, styles, client, model=DEFAULT_MODEL, max_retries=3):
+    """Caption frames via factual VLM description, then style-only rewrite."""
+    _validate_styles(styles)
+    description = describe_video_facts(frames_b64, client, model=model, max_retries=max_retries)
+    return rewrite_description_all_styles(
+        description,
+        styles,
+        client,
+        model=model,
+        max_retries=max_retries,
+    )
+
+
+CAPTION_MODES = {
+    "zero_shot": caption_all_styles,
+    "two_stage": caption_all_styles_two_stage,
+}
+
+
+def caption_all_styles_with_mode(
+    frames_b64,
+    styles,
+    client,
+    mode=DEFAULT_CAPTION_MODE,
+    model=DEFAULT_MODEL,
+    max_retries=3,
+):
+    """Caption frames using a named mode."""
+    mode = str(mode).strip()
+    if mode not in CAPTION_MODES:
+        raise ValueError(f"Unknown caption mode '{mode}'. Expected one of: {', '.join(CAPTION_MODES)}")
+    return CAPTION_MODES[mode](
+        frames_b64,
+        styles,
+        client,
+        model=model,
+        max_retries=max_retries,
+    )
+
+
+def caption(frames_b64, style, client, model=DEFAULT_MODEL, mode=DEFAULT_CAPTION_MODE):
+    """Caption the frames in the given style using a named mode."""
+    return caption_all_styles_with_mode(frames_b64, [style], client, mode=mode, model=model)[style]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Two-stage stylistic video captioning.")
+    parser.add_argument("video", help="Path to the input video file.")
+    parser.add_argument("style", nargs="?", choices=list(STYLES), help="Single style (default: all).")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Fireworks model id.")
+    parser.add_argument("--num-frames", type=int, default=16,
+                        help="Frames sampled evenly across the whole clip.")
+    parser.add_argument("--fps", type=float, default=None,
+                        help="Alternative to --num-frames: sample at a constant rate.")
+    args = parser.parse_args()
+
+    frames = extract_frames(args.video, num_frames=args.num_frames, fps=args.fps)
+    print(f"[{len(frames)} frames sampled from {args.video}]", file=sys.stderr)
+    client = OpenAI(
+        api_key=os.environ["FIREWORKS_API_KEY"],
+        base_url=os.environ["FIREWORKS_BASE_URL"],
+    )
+
+    styles = [args.style] if args.style else list(STYLES)
+    captions = caption_all_styles_two_stage(frames, styles, client, model=args.model)
+    for style, text in captions.items():
+        print(f"{style:18s} -> {text}")
+
+
+if __name__ == "__main__":
+    main()

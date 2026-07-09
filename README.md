@@ -12,7 +12,7 @@ CaptionChameleon dynamically generates video captions in multiple distinct style
 
 Powered by advanced vision-language models and zero-shot learning, CaptionChameleon processes videos by:
 1. **Sampling frames**: Intelligently extracting 16 frames from each video for efficient processing
-2. **Batch style generation**: Generating all 4 caption styles in a single API call per video, reducing latency
+2. **Mode-selectable captioning**: Use `two_stage` to separate factual description from tone, or `zero_shot` for direct style-conditioned captions
 3. **Parallel processing**: Using a thread pool executor to process multiple videos concurrently
 4. **Multi-platform deployment**: Seamless support for both local execution and containerized Docker deployment
 
@@ -26,9 +26,9 @@ CaptionChameleon enables fast, cost-effective video captioning at scale without 
 
 ## Features
 
-- **Zero-shot learning**: No fine-tuning required; single style-conditioned instruction steers the model
+- **Zero-shot learning**: No fine-tuning required; prompts separate factual video understanding from style rewriting
 - **Batch processing**: Process multiple videos in parallel with configurable workers
-- **Multi-style output**: Generate all 4 styles in a single API call per video
+- **Multi-style output**: Generate all 4 styles from one factual description per video
 - **Docker support**: Containerized for easy deployment
 - **Efficient frame sampling**: Intelligent JPEG frame extraction and encoding
 
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 cat > .env << 'EOF'
 export FIREWORKS_API_KEY="fw_your_key_here"
 export FIREWORKS_BASE_URL="https://api.fireworks.ai/inference/v1"
-export ALLOWED_MODELS="accounts/fireworks/models/qwen3-vl-8b-instruct"
+export ALLOWED_MODELS="accounts/fireworks/models/qwen3p7-plus"
 EOF
 
 # 4. Run with test video
@@ -185,12 +185,17 @@ export MAX_WORKERS="10"
 export NUM_FRAMES="8"           # Frames to sample per video (default: 8)
 export MAX_FRAMES="16"          # Max frames in FPS mode (default: 16)
 export FRAME_FPS=""             # Frame rate (fps). Leave empty for adaptive mode
+export CAPTION_MODE="two_stage" # two_stage or zero_shot (default: two_stage)
 ```
 
 **Frame Extraction Settings:**
 - **NUM_FRAMES**: Number of frames to extract from each video (default: 8)
 - **MAX_FRAMES**: Maximum frames when using FPS mode (default: 16)
 - **FRAME_FPS**: Sampling rate in frames-per-second. Leave empty for adaptive mode (intelligently spaced frames)
+
+**Caption Modes:**
+- **two_stage**: VLM first writes a factual description, then a text rewrite call produces all requested styles.
+- **zero_shot**: VLM directly writes requested styles from frames in one style-conditioned call.
 
 ## Running Locally
 
@@ -209,12 +214,14 @@ Create an `input.json` file with the following format:
   {
     "task_id": "v1",
     "video_url": "https://storage.example.com/clip1.mp4",
-    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"]
+    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"],
+    "mode": "two_stage"
   },
   {
     "task_id": "v2",
     "video_url": "https://storage.example.com/clip2.mp4",
-    "styles": ["formal", "sarcastic"]
+    "styles": ["formal", "sarcastic"],
+    "mode": "zero_shot"
   }
 ]
 ```
@@ -226,7 +233,8 @@ Alternatively, use local file paths:
   {
     "task_id": "local1",
     "video_url": "/path/to/video.mp4",
-    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"]
+    "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"],
+    "mode": "two_stage"
   }
 ]
 ```
@@ -245,7 +253,8 @@ Or with explicit arguments:
 python entrypoint.py \
   --input input.json \
   --output output/results.json \
-  --max-workers 10
+  --max-workers 10 \
+  --mode two_stage
 ```
 
 ### 4. View Results
@@ -271,8 +280,10 @@ Results are written to `output/results.json`:
 For quick testing with a single video:
 
 ```bash
-python zero_shot.py /path/to/video.mp4           # all 4 styles
-python zero_shot.py /path/to/video.mp4 formal    # one style
+python zero_shot.py /path/to/video.mp4           # direct zero-shot, all 4 styles
+python zero_shot.py /path/to/video.mp4 formal    # direct zero-shot, one style
+python two_stage.py /path/to/video.mp4           # two-stage, all 4 styles
+python two_stage.py /path/to/video.mp4 formal    # two-stage, one style
 ```
 
 ## Building Docker Image
@@ -353,7 +364,8 @@ docker run \
   shadowking9021/amd-hackathon:latest \
   --input /input/tasks.json \
   --output /output/results.json \
-  --max-workers 10
+  --max-workers 10 \
+  --mode two_stage
 ```
 
 ### 6. Verify Output
@@ -367,7 +379,7 @@ cat output/results.json
 ### Local Execution
 - **Frame count**: 16 frames per video (v3 - enhanced quality for better captions)
 - **Parallel workers**: 10 (adjustable via `--max-workers`)
-- **Batch API calls**: All 4 styles generated in one API call per video
+- **Two-stage API calls**: One VLM call produces factual description, one rewrite call produces all requested styles
 - **Thinking disabled**: Extended reasoning disabled for faster responses (Kimi 2.6+)
 
 ### To Adjust Performance
@@ -382,7 +394,7 @@ python entrypoint.py --input input.json --output output/results.json --max-worke
 frames = extract_frames(video_path, num_frames=6)  # reduce from 8 to 6
 ```
 
-**Reduce output tokens** (in `zero_shot.py`):
+**Reduce output tokens** (in `zero_shot.py` or `two_stage.py`):
 ```python
 max_tokens=256,  # reduce from 512
 ```
@@ -398,7 +410,12 @@ max_tokens=256,  # reduce from 512
 ### Zero-Shot Captioner (`zero_shot.py`)
 - Extracts frames from video using OpenCV
 - Encodes frames as base64 JPEG
-- Calls vision-language model with style-conditioned prompts
+- Calls vision-language model with direct style-conditioned prompts
+- Parses JSON response from model
+
+### Two-Stage Captioner (`two_stage.py`)
+- Produces a factual VLM description from frames
+- Rewrites that factual description into requested styles
 - Parses JSON response from model
 
 ## Troubleshooting
@@ -438,7 +455,8 @@ docker ps  # test connectivity
 {
   "task_id": "unique_identifier",
   "video_url": "https://... or /local/path/...",
-  "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"]
+  "styles": ["formal", "sarcastic", "humorous_tech", "humorous_non_tech"],
+  "mode": "two_stage"
 }
 ```
 
@@ -469,6 +487,7 @@ docker ps  # test connectivity
 | `NUM_FRAMES` | No | `8` | Frames to extract per video |
 | `MAX_FRAMES` | No | `16` | Max frames in FPS mode |
 | `FRAME_FPS` | No | `` (empty) | Sampling rate in fps. Empty = adaptive mode |
+| `CAPTION_MODE` | No | `two_stage` | Captioning mode: `two_stage` or `zero_shot` |
 
 ## Performance Metrics
 
@@ -483,4 +502,4 @@ Proprietary - AMD Hackathon
 
 ## Support
 
-For issues or questions, refer to the source code documentation in `zero_shot.py` and `entrypoint.py`.
+For issues or questions, refer to the source code documentation in `zero_shot.py`, `two_stage.py`, and `entrypoint.py`.
