@@ -45,6 +45,12 @@ from zero_shot import STYLES, caption_all_styles, extract_frames
 # Load environment variables from .env file bundled with container
 load_dotenv()
 
+# Frame extraction settings
+NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
+MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
+_frame_fps = os.environ.get("FRAME_FPS", "").strip()
+FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps
+
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
 
@@ -105,7 +111,7 @@ def process_one_task(task, client, model, max_retries=3):
         else:
             video_path = video_url
 
-        frames = extract_frames(video_path, num_frames=8, max_frames=16)
+        frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
         print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
 
         captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries)

@@ -82,6 +82,9 @@ test_local.py
 test_*.json
 debug_*.txt
 
+# Model techniques (work in progress)
+MODEL_TECHNIQUES.md
+
 # Temporary files
 *.tmp
 *.temp
