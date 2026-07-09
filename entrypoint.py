@@ -32,7 +32,7 @@ import random
 import sys
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -53,6 +53,7 @@ FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, o
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
+TASK_TIMEOUT = 30  # Timeout per task in seconds
 
 
 def download_video(url, dest_path, timeout=30, max_retries=3):
@@ -124,7 +125,7 @@ def process_one_task(task, client, model, max_retries=3):
             os.remove(tmp_path)
 
 
-def process_tasks(tasks, max_workers=10):
+def process_tasks(tasks, max_workers=15):
     """Process tasks in parallel with a thread pool."""
     # Check for required environment variables
     required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
@@ -153,14 +154,21 @@ def process_tasks(tasks, max_workers=10):
             for task in tasks
         }
         for future in as_completed(futures):
+            task_id = futures[future].get("task_id", "unknown")
             try:
-                result = future.result()
+                result = future.result(timeout=TASK_TIMEOUT)
                 if result is not None:
                     results.append(result)
                 else:
                     failed += 1
+            except TimeoutError:
+                # Task exceeded timeout - return empty captions for all 4 styles
+                print(f"Task {task_id} timed out after {TASK_TIMEOUT}s - returning empty captions", file=sys.stderr)
+                styles = futures[future].get("styles", list(STYLES))
+                empty_captions = {style: "" for style in styles}
+                results.append({"task_id": task_id, "captions": empty_captions})
+                failed += 1
             except Exception as exc:
-                task_id = futures[future].get("task_id", "unknown")
                 print(f"Task {task_id} failed: {exc}", file=sys.stderr)
                 failed += 1
 

@@ -90,25 +90,24 @@ cat output/results.json
 #### Build and Run
 
 ```bash
-# Set tag variable (e.g., latest, v1, v2)
-TAG="v4"
-REGISTRY="shadowking9021/amd-hackathon"
+# Option 1: Direct command (recommended)
+docker buildx build --platform linux/amd64 -t shadowking9021/amd-hackathon:v4 --load .
+docker push shadowking9021/amd-hackathon:v4
 
-# 1. Build image for linux/amd64
+# Option 2: With variables (set in same shell)
+export TAG="v4"
+export REGISTRY="shadowking9021/amd-hackathon"
 docker buildx build --platform linux/amd64 -t $REGISTRY:$TAG --load .
-
-# 2. Tag and push to Docker Hub
-docker tag $REGISTRY:$TAG $REGISTRY:$TAG
 docker push $REGISTRY:$TAG
 
-# 3. Run container
+# Run container
 docker run \
   --env-file .env \
   -v $(pwd)/input:/input \
   -v $(pwd)/output:/output \
-  $REGISTRY:$TAG
+  shadowking9021/amd-hackathon:v4
 
-# 4. Check output
+# Check output
 cat output/results.json
 ```
 
