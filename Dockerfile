@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -19,7 +18,7 @@ COPY .env .
 # NUM_FRAMES: Number of frames to sample from each video (default: 8)
 # MAX_FRAMES: Maximum frames if using FPS mode (default: 16)
 # FRAME_FPS: Frame sampling rate in fps. Set to None for adaptive mode (default: None)
-ENV NUM_FRAMES=32
+ENV NUM_FRAMES=16
 ENV MAX_FRAMES=16
 ENV FRAME_FPS=""
 
