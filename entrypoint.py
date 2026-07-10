@@ -47,6 +47,8 @@ load_dotenv()
 from two_stage import (
     CAPTION_MODES,
     DEFAULT_CAPTION_MODE,
+    DEFAULT_MODEL_VISION,
+    DEFAULT_MODEL_STYLE,
     caption_all_styles_with_mode,
 )
 from zero_shot import (
@@ -59,7 +61,7 @@ DEFAULT_BATCH_CAPTION_MODE = os.environ.get("CAPTION_MODE", DEFAULT_CAPTION_MODE
 NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "16"))  # Increased from 8 to 16 for quality
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
 _frame_fps = os.environ.get("FRAME_FPS", "").strip()
-FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps
+FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = fixed NUM_FRAMES mode, otherwise adaptive FPS mode
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
@@ -94,7 +96,7 @@ def download_video(url, dest_path, timeout=30, max_retries=3):
                 raise
 
 
-def process_one_task(task, client, model, caption_mode, max_retries=3):
+def process_one_task(task, client, model, caption_mode, model_vision=DEFAULT_MODEL_VISION, model_style=DEFAULT_MODEL_STYLE, max_retries=3):
     """Download a video and return captions for all its requested styles with retries."""
     task_id = task.get("task_id", "unknown")
     video_url = task.get("video_url")
@@ -129,14 +131,22 @@ def process_one_task(task, client, model, caption_mode, max_retries=3):
         frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
         print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
 
-        captions = caption_all_styles_with_mode(
-            frames,
-            styles,
-            client,
-            mode=task_mode,
-            model=model,
-            max_retries=max_retries,
-        )
+        try:
+            captions = caption_all_styles_with_mode(
+                frames,
+                styles,
+                client,
+                mode=task_mode,
+                model=model,
+                model_vision=model_vision,
+                model_style=model_style,
+                max_retries=max_retries,
+            )
+        except Exception as e:
+            # If captioning fails, return empty captions for all styles
+            print(f"Captioning failed for {task_id}: {e}", file=sys.stderr)
+            captions = {style: "" for style in styles}
+        
         for style, text in captions.items():
             print(f"  {task_id} {style}: {text}", file=sys.stderr)
 
@@ -161,6 +171,9 @@ def process_tasks(tasks, max_workers=10, caption_mode=DEFAULT_BATCH_CAPTION_MODE
     base_url = os.environ["FIREWORKS_BASE_URL"]
     allowed_models = os.environ["ALLOWED_MODELS"].split(",")
     model = allowed_models[0].strip()
+    model_vision = os.environ.get("MODEL_VISION", DEFAULT_MODEL_VISION).strip()
+    model_style = os.environ.get("MODEL_STYLE", DEFAULT_MODEL_STYLE).strip()
+    
     if caption_mode not in CAPTION_MODES:
         raise RuntimeError(
             f"Unknown caption mode '{caption_mode}'. Expected one of: {', '.join(CAPTION_MODES)}"
@@ -175,7 +188,15 @@ def process_tasks(tasks, max_workers=10, caption_mode=DEFAULT_BATCH_CAPTION_MODE
     failed = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(process_one_task, task, client, model, caption_mode): task
+            executor.submit(
+                process_one_task,
+                task,
+                client,
+                model,
+                caption_mode,
+                model_vision=model_vision,
+                model_style=model_style,
+            ): task
             for task in tasks
         }
         for future in as_completed(futures):

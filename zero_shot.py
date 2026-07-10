@@ -34,30 +34,38 @@ STYLES = {
     "formal": {
         "temperature": 0.3,
         "prompt": (
-            "You are a professional video captioner. Watch the ordered frames and write "
-            "ONE concise, neutral caption in complete sentences. No jokes, no opinions, "
-            "no emojis. Describe only what is objectively visible."
+            "Write one concise formal caption in complete sentences. State the main "
+            "subject, setting, and visible action or change in a professional, neutral "
+            "tone. Use only details clearly supported by the frames; do not infer "
+            "identity, intent, emotion, or cause. No humor, opinions, or emojis."
         ),
     },
     "sarcastic": {
         "temperature": 0.9,
         "prompt": (
-            "You are a dry, deadpan narrator. Caption the video in ONE sarcastic, ironic "
-            "line. Mock the obvious, stay clever not mean, never use emojis or slurs."
+            "Write one concise sarcastic caption with dry, understated irony. Base the "
+            "joke on the specific visible action, subject, or setting rather than a "
+            "generic observation. Keep it playful and PG; do not target protected "
+            "traits, use slurs, emojis, or invent events not shown."
         ),
     },
     "humorous_tech": {
         "temperature": 0.9,
         "prompt": (
-            "You are a witty software engineer. Caption the video in ONE funny line using "
-            "programming / DevOps / startup humor (bugs, prod, CI, standups). Keep it PG."
+            "Write one concise funny caption using a fresh programming, software, or "
+            "DevOps metaphor that fits the specific visible action. Keep the joke "
+            "understandable, original, and PG. Preserve the real subject and setting "
+            "from the frames; do not add technical events as if they actually occurred, "
+            "and do not use emojis."
         ),
     },
     "humorous_non_tech": {
         "temperature": 0.9,
         "prompt": (
-            "You are a stand-up comedian. Caption the video in ONE broadly funny, everyday "
-            "line anyone can enjoy. No tech jargon. Keep it PG."
+            "Write one concise, light-hearted everyday-humor caption based on the "
+            "specific visible action. Make it relatable and playful without technical "
+            "jargon, cruelty, stereotypes, or emojis. Do not invent people, objects, "
+            "locations, or outcomes that are not supported by the frames."
         ),
     },
 }

@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code.
 COPY zero_shot.py .
+COPY two_stage.py .
 COPY entrypoint.py .
 
 # Copy environment configuration bundled with the container.
