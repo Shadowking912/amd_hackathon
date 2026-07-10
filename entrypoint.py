@@ -56,7 +56,7 @@ from zero_shot import (
 
 # Frame extraction settings
 DEFAULT_BATCH_CAPTION_MODE = os.environ.get("CAPTION_MODE", DEFAULT_CAPTION_MODE).strip()
-NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
+NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "16"))  # Increased from 8 to 16 for quality
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
 _frame_fps = os.environ.get("FRAME_FPS", "").strip()
 FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps

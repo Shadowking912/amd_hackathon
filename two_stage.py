@@ -27,6 +27,16 @@ FACTUAL_DESCRIPTION_PROMPT = (
     "visible in the frames. Return only the description text."
 )
 
+VERIFY_DESCRIPTION_PROMPT = (
+    "You are a fact-checker. Review this video description against the actual frames. "
+    "For each claim in the description:\n"
+    "1. Check if it matches what you see in the frames\n"
+    "2. If wrong or too generic, correct or expand it\n"
+    "3. If missing important details visible in frames, add them\n"
+    "4. Remove any statements not visible in frames\n\n"
+    "Return ONLY the corrected, verified description. Do not explain your changes."
+)
+
 STYLE_REWRITE_PROMPTS = {
     "formal": (
         "Write ONE concise, neutral caption in complete sentences. No jokes, no "
@@ -138,6 +148,30 @@ def describe_video_facts(frames_b64, client, model=DEFAULT_MODEL, max_retries=3)
     )
 
 
+def verify_description(frames_b64, description, client, model=DEFAULT_MODEL, max_retries=3):
+    """Stage 1b: verify and correct the description against the actual frames."""
+    content = [
+        {
+            "type": "text",
+            "text": f"{VERIFY_DESCRIPTION_PROMPT}\n\nCurrent description:\n{description}"
+        }
+    ]
+    for frame in frames_b64:
+        content.append(
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{frame}"}}
+        )
+
+    verified = _create_completion_with_retries(
+        client,
+        model=model,
+        messages=[{"role": "user", "content": content}],
+        temperature=0.1,  # Very strict - just fact-checking, not creative
+        max_tokens=350,
+        max_retries=max_retries,
+    )
+    return verified
+
+
 def rewrite_description_all_styles(description, styles, client, model=DEFAULT_MODEL, max_retries=3):
     """Stage 2: rewrite a factual description into each requested style."""
     _validate_styles(styles)
@@ -175,11 +209,24 @@ def rewrite_description_all_styles(description, styles, client, model=DEFAULT_MO
 
 
 def caption_all_styles_two_stage(frames_b64, styles, client, model=DEFAULT_MODEL, max_retries=3):
-    """Caption frames via factual VLM description, then style-only rewrite."""
+    """Caption frames via 3-stage pipeline: describe → verify → rewrite styles."""
     _validate_styles(styles)
+    
+    # Stage 1: Generate factual description
     description = describe_video_facts(frames_b64, client, model=model, max_retries=max_retries)
-    return rewrite_description_all_styles(
+    
+    # Stage 1b: Verify and correct description against frames
+    verified_description = verify_description(
+        frames_b64,
         description,
+        client,
+        model=model,
+        max_retries=max_retries,
+    )
+    
+    # Stage 2: Rewrite verified description into requested styles
+    return rewrite_description_all_styles(
+        verified_description,
         styles,
         client,
         model=model,
