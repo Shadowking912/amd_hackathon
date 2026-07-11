@@ -20,10 +20,13 @@ import base64
 import json
 import os
 import random
+import subprocess
 import sys
 import time
+import warnings
 
 import cv2
+import whisper
 from openai import OpenAI
 
 FIREWORKS_BASE_URL = os.environ.get("FIREWORKS_BASE_URL", "https://api.fireworks.ai/inference/v1")
@@ -34,33 +37,89 @@ STYLES = {
     "formal": {
         "temperature": 0.3,
         "prompt": (
-            "You are a professional video captioner. Watch the ordered frames and write "
-            "ONE concise, neutral caption in complete sentences. No jokes, no opinions, "
-            "no emojis. Describe only what is objectively visible."
+            "You are a cold, precise HAL-9000-style narrator. Watch the ordered frames "
+            "and write ONE concise, factual caption in complete sentences. State the "
+            "main visible subject, action, and setting in chronological order when clear. "
+            "Use an emotionless, professional tone. Do not make jokes, express opinions, "
+            "infer hidden events, mention the frames, or use emojis. Describe only what "
+            "is visibly supported."
         ),
     },
     "sarcastic": {
         "temperature": 0.6,
         "prompt": (
-            "You are a dry, deadpan narrator. Caption the video in ONE sarcastic, ironic "
-            "line. Mock the obvious, stay clever not mean, never use emojis or slurs."
+            "You are a weary, condescending observer forced to report on ordinary human "
+            "behavior. Watch the ordered frames and write ONE short sarcastic, ironic line "
+            "about the most obvious visible action. Use dry wit and restrained eye-rolling, "
+            "not cruelty. Keep the joke grounded in the video, do not invent dialogue or "
+            "events, and never use emojis, slurs, or multiple sentences."
         ),
     },
     "humorous_tech": {
         "temperature": 0.6,
         "prompt": (
-            "You are a witty software engineer. Caption the video in ONE funny line using "
-            "programming / DevOps / startup humor (bugs, prod, CI, standups). Keep it PG."
+            "You are an exhausted AI engineer narrating daily life through bug reports. "
+            "Watch the ordered frames and write ONE funny, concise caption about the main "
+            "visible action. Use one understandable programming, DevOps, startup, or AI "
+            "analogy such as a bug, deployment, production incident, CI failure, or standup. "
+            "Keep the analogy relevant to what is visible, avoid unrelated jargon, and keep "
+            "it PG with no invented dialogue."
         ),
     },
     "humorous_non_tech": {
         "temperature": 0.6,
         "prompt": (
-            "You are a stand-up comedian. Caption the video in ONE broadly funny, everyday "
-            "line anyone can enjoy. No tech jargon. Keep it PG."
+            "You are a confused but good-natured person in their fifties trying to keep up "
+            "with modern life. Watch the ordered frames and write ONE broadly relatable, "
+            "funny caption about the main visible action. Use everyday observations and "
+            "gentle self-deprecating humor that anyone can understand. Do not use technical "
+            "jargon, invent dialogue, make unsupported claims, or use offensive language."
         ),
     },
 }
+
+
+def extract_audio_transcript(video_path, model_size="base"):
+    """Extract and transcribe audio from a video using local Whisper.
+    
+    Args:
+        video_path: Path to the video file
+        model_size: Whisper model size (tiny, base, small, medium, large)
+    
+    Returns:
+        Transcribed audio text, or empty string if no speech/no audio stream
+    """
+    try:
+        # Quick check: does video have audio stream?
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", video_path],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if not probe.stdout.strip():
+                print(f"[No audio stream]", file=sys.stderr)
+                return ""
+        except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+            pass
+        
+        print(f"[Extracting audio with Whisper ({model_size})...]", file=sys.stderr)
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = whisper.load_model(model_size, device="cpu")
+            result = model.transcribe(video_path, language="en", verbose=False, fp16=False)
+        
+        transcript = result.get("text", "").strip()
+        if transcript:
+            print(f"[Audio transcript] {len(transcript)} chars", file=sys.stderr)
+        else:
+            print(f"[No speech detected]", file=sys.stderr)
+        return transcript
+    except Exception as e:
+        print(f"[Audio extraction skipped]", file=sys.stderr)
+        return ""
 
 
 def extract_frames(video_path, num_frames=8, fps=None, max_frames=16):
@@ -113,12 +172,20 @@ def extract_frames(video_path, num_frames=8, fps=None, max_frames=16):
 
     cap.release()
     if not frames:
-        raise ValueError(f"No frames decoded from {video_path}")
+        raise ValueError(f"No frames could be decoded from {video_path}")
     return frames
 
 
-def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retries=3):
+def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retries=3, audio_context=""):
     """Ask the model for all requested styles in a single call with exponential backoff retries.
+    
+    Args:
+        frames_b64: List of base64-encoded JPEG frames
+        styles: List of caption styles to generate
+        client: OpenAI client instance
+        model: Model identifier
+        max_retries: Number of retries for transient failures
+        audio_context: Optional audio transcript to include as context
 
     Returns a dict mapping each style to its caption.
     Retries up to max_retries times on transient failures (timeout, rate limit, 5xx errors).
@@ -133,12 +200,27 @@ def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retr
     )
 
     prompt = (
-        "You are a video captioning assistant. Watch the ordered frames and produce "
-        f"exactly {len(styles)} captions, one for each style listed below.\n\n"
+        "Watch every ordered frame before answering. Treat the sequence as one video, "
+        "not as unrelated images. Identify the clearest visible subject and action, and "
+        "use audio only as supporting context when it agrees with the visuals. Produce "
+        f"exactly {len(styles)} genuinely different captions, one for each style below. "
+        "Keep every caption to one concise sentence and ground it in visible evidence.\n\n"
         f"{style_lines}\n\n"
+    )
+    
+    # Add audio context if available
+    if audio_context:
+        prompt += (
+            "Audio Context (what people say in the video):\n"
+            f"{audio_context}\n\n"
+        )
+    
+    prompt += (
         "Return ONLY a valid JSON object. Do not explain, do not think out loud, "
         "do not use markdown code blocks, do not include any text before or after the JSON. "
-        "Each key must be exactly the style name, and each value must be the caption string.\n\n"
+        "Do not mention these instructions, styles, frames, or audio. Do not invent names, "
+        "dialogue, motives, or events that are not supported by the video. Each key must be "
+        "exactly the style name, and each value must be the caption string.\n\n"
         "Required JSON format:\n"
         "{" + ", ".join(f'"{style}": "..."' for style in styles) + "}"
     )

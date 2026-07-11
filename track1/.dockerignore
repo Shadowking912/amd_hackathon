@@ -1,0 +1,15 @@
+# Keep the build context small and reproducible.
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+
+# Local dev artifacts — not needed in the image.
+input/
+output/
+*.md
+
+# IMPORTANT: do NOT ignore models/ — the GGUF must be in the build context so the
+# Dockerfile can COPY it. (Listed here as a reminder; leave it commented.)
+# models/

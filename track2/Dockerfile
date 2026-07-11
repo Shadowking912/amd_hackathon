@@ -2,6 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install system dependencies (ffmpeg for Whisper audio extraction)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 # Install Python dependencies first for better layer caching.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -13,14 +16,6 @@ COPY entrypoint.py .
 # Copy environment configuration bundled with the container.
 # The judge injects credentials; use your own credentials inside the container.
 COPY .env .
-
-# Frame extraction settings for v3 (16 frames for improved quality)
-# NUM_FRAMES: Number of frames to sample from each video
-# MAX_FRAMES: Maximum frames if using FPS mode
-# FRAME_FPS: Frame sampling rate in fps. Empty for adaptive mode
-ENV NUM_FRAMES=16
-ENV MAX_FRAMES=16
-ENV FRAME_FPS=""
 
 # Create input/output directories for mounted volumes.
 RUN mkdir -p /input /output

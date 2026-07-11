@@ -1,0 +1,4 @@
+openai>=1.40.0
+# Local inference (bundle a small GGUF and set LOCAL_MODEL_PATH). Optional but recommended
+# for token efficiency — local tokens are free.
+llama-cpp-python>=0.2.90

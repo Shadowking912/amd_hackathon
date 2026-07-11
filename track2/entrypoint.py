@@ -43,13 +43,16 @@ from openai import OpenAI
 # Load environment variables from .env file BEFORE importing zero_shot (which reads env vars at module level)
 load_dotenv()
 
-from zero_shot import STYLES, caption_all_styles, extract_frames
+from zero_shot import STYLES, caption_all_styles, extract_frames, extract_audio_transcript
 
 # Frame extraction configuration
-NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "8"))
+NUM_FRAMES = int(os.environ.get("NUM_FRAMES", "16"))
 MAX_FRAMES = int(os.environ.get("MAX_FRAMES", "16"))
 _frame_fps = os.environ.get("FRAME_FPS", "").strip()
 FRAME_FPS = float(_frame_fps) if _frame_fps else None  # None = adaptive mode, otherwise float fps
+
+# Audio extraction configuration
+ENABLE_AUDIO = os.environ.get("ENABLE_AUDIO", "true").lower() in ("true", "1", "yes")
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
@@ -106,23 +109,53 @@ def process_one_task(task, client, model, max_retries=3):
     tmp_path = tempfile.mktemp(suffix=suffix)
 
     try:
-        if parsed.scheme in ("http", "https"):
-            download_video(video_url, tmp_path, timeout=30, max_retries=max_retries)
-            video_path = tmp_path
+        try:
+            if parsed.scheme in ("http", "https"):
+                download_video(video_url, tmp_path, timeout=30, max_retries=max_retries)
+                video_path = tmp_path
+            else:
+                video_path = video_url
+        except Exception as e:
+            print(f"[Error downloading video: {type(e).__name__}]", file=sys.stderr)
+            raise
+
+        try:
+            frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
+            print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
+        except Exception as e:
+            print(f"[Error extracting frames: {type(e).__name__}]", file=sys.stderr)
+            raise
+        
+        # Extract audio transcript for context (graceful fallback if fails)
+        audio_transcript = ""
+        if ENABLE_AUDIO:
+            try:
+                audio_transcript = extract_audio_transcript(video_path, model_size="base")
+            except Exception as e:
+                print(f"[Audio extraction error (skipped): {type(e).__name__}]", file=sys.stderr)
+                audio_transcript = ""
         else:
-            video_path = video_url
+            print(f"[Audio extraction disabled]", file=sys.stderr)
 
-        frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
-        print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
-
-        captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries)
-        for style, text in captions.items():
-            print(f"  {task_id} {style}: {text}", file=sys.stderr)
+        try:
+            captions = caption_all_styles(frames, styles, client, model=model, max_retries=max_retries, audio_context=audio_transcript)
+            for style, text in captions.items():
+                print(f"  {task_id} {style}: {text}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Error generating captions: {type(e).__name__}]", file=sys.stderr)
+            raise
 
         return {"task_id": task_id, "captions": captions}
+    except Exception as e:
+        # Return empty captions for all styles instead of crashing
+        print(f"Task {task_id} failed: {type(e).__name__}", file=sys.stderr)
+        return {"task_id": task_id, "captions": {style: "" for style in STYLES}}
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
 def process_tasks(tasks, max_workers=10):
@@ -155,21 +188,26 @@ def process_tasks(tasks, max_workers=10):
         }
         for future in as_completed(futures):
             task_id = futures[future].get("task_id", "unknown")
+            styles = futures[future].get("styles", list(STYLES))
             try:
                 result = future.result(timeout=TASK_TIMEOUT)
                 if result is not None:
                     results.append(result)
                 else:
                     failed += 1
+                    # Return empty captions if result is None
+                    results.append({"task_id": task_id, "captions": {style: "" for style in STYLES}})
             except TimeoutError:
                 # Task exceeded timeout - return empty captions for all 4 styles
                 print(f"Task {task_id} timed out after {TASK_TIMEOUT}s - returning empty captions", file=sys.stderr)
-                styles = futures[future].get("styles", list(STYLES))
-                empty_captions = {style: "" for style in styles}
+                empty_captions = {style: "" for style in STYLES}
                 results.append({"task_id": task_id, "captions": empty_captions})
                 failed += 1
             except Exception as exc:
-                print(f"Task {task_id} failed: {exc}", file=sys.stderr)
+                # Any other error - return empty captions instead of crashing
+                print(f"Task {task_id} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                empty_captions = {style: "" for style in STYLES}
+                results.append({"task_id": task_id, "captions": empty_captions})
                 failed += 1
 
     # Preserve input order.

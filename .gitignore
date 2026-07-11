@@ -127,3 +127,5 @@ ehthumbs.db
 
 # Misc
 .vscode-server/
+
+models/

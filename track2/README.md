@@ -96,7 +96,7 @@ docker buildx build --platform linux/amd64 -t shadowking9021/amd-hackathon:v4 --
 docker push shadowking9021/amd-hackathon:v4
 
 # Option 2: With variables (set in same shell)
-export TAG="v5"
+export TAG="v6"
 export REGISTRY="shadowking9021/amd-hackathon"
 docker buildx build --platform linux/amd64 -t $REGISTRY:$TAG --load .
 docker push $REGISTRY:$TAG
