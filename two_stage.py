@@ -93,8 +93,15 @@ def _create_completion_with_retries(
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "timeout": 25,
-                "extra_body": {"thinking": {"type": "disabled"}},
             }
+            
+            # Add model-specific parameters
+            if "fireworks" in model.lower():
+                kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+            elif "gemini" in model.lower():
+                # Gemini uses reasoning_effort instead of thinking
+                kwargs["reasoning_effort"] = "low"
+            
             if response_format is not None:
                 kwargs["response_format"] = response_format
             resp = client.chat.completions.create(**kwargs)
@@ -259,29 +266,36 @@ def rewrite_description_all_styles(description, styles, client, model=DEFAULT_MO
     raise last_error or ValueError("Stage 2 produced no valid JSON response")
 
 
-def caption_all_styles_two_stage(frames_b64, styles, client, model_vision=DEFAULT_MODEL_VISION, model_style=DEFAULT_MODEL_STYLE, max_retries=3):
-    """Caption frames via 3-stage pipeline: describe → verify → rewrite styles."""
+def caption_all_styles_two_stage(frames_b64, styles, client_vision=None, client_style=None, model_vision=DEFAULT_MODEL_VISION, model_style=DEFAULT_MODEL_STYLE, max_retries=3):
+    """Caption frames via 2-stage pipeline: describe → rewrite styles."""
     _validate_styles(styles)
     
+    # Use fallback client if not provided separately
+    if client_vision is None:
+        from openai import OpenAI
+        client_vision = OpenAI(api_key=os.environ.get("FIREWORKS_API_KEY"), base_url=os.environ.get("FIREWORKS_BASE_URL"))
+    if client_style is None:
+        client_style = client_vision
+    
     # Stage 1: Generate factual description
-    description = describe_video_facts(frames_b64, client, model=model_vision, max_retries=max_retries)
+    description = describe_video_facts(frames_b64, client_vision, model=model_vision, max_retries=max_retries)
     print(f"[Stage 1 description] {len(description)} chars", file=sys.stderr)
     
-    # Stage 1b: Verify and correct description against frames
-    verified_description = verify_description(
-        frames_b64,
-        description,
-        client,
-        model=model_vision,
-        max_retries=max_retries,
-    )
-    print(f"[Stage 1b verified] {len(verified_description)} chars", file=sys.stderr)
+    # Stage 1b: Verify and correct description against frames (COMMENTED OUT)
+    # verified_description = verify_description(
+    #     frames_b64,
+    #     description,
+    #     client_vision,
+    #     model=model_vision,
+    #     max_retries=max_retries,
+    # )
+    # print(f"[Stage 1b verified] {len(verified_description)} chars", file=sys.stderr)
     
-    # Stage 2: Rewrite verified description into requested styles
+    # Stage 2: Rewrite description into requested styles
     return rewrite_description_all_styles(
-        verified_description,
+        description,
         styles,
-        client,
+        client_style,
         model=model_style,
         max_retries=max_retries,
     )
@@ -296,12 +310,14 @@ CAPTION_MODES = {
 def caption_all_styles_with_mode(
     frames_b64,
     styles,
-    client,
+    client=None,
     mode=DEFAULT_CAPTION_MODE,
     model=DEFAULT_MODEL,
     model_vision=DEFAULT_MODEL_VISION,
     model_style=DEFAULT_MODEL_STYLE,
-    max_retries=3,
+    client_vision=None,
+    client_style=None,
+    max_retries=5,
 ):
     """Caption frames using a named mode."""
     mode = str(mode).strip()
@@ -312,7 +328,8 @@ def caption_all_styles_with_mode(
         return CAPTION_MODES[mode](
             frames_b64,
             styles,
-            client,
+            client_vision=client_vision or client,
+            client_style=client_style or client,
             model_vision=model_vision,
             model_style=model_style,
             max_retries=max_retries,

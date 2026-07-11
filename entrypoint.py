@@ -96,7 +96,7 @@ def download_video(url, dest_path, timeout=30, max_retries=3):
                 raise
 
 
-def process_one_task(task, client, model, caption_mode, model_vision=DEFAULT_MODEL_VISION, model_style=DEFAULT_MODEL_STYLE, max_retries=3):
+def process_one_task(task, client, model, caption_mode, model_vision=DEFAULT_MODEL_VISION, model_style=DEFAULT_MODEL_STYLE, client_vision=None, client_style=None, max_retries=3):
     """Download a video and return captions for all its requested styles with retries."""
     task_id = task.get("task_id", "unknown")
     video_url = task.get("video_url")
@@ -135,11 +135,13 @@ def process_one_task(task, client, model, caption_mode, model_vision=DEFAULT_MOD
             captions = caption_all_styles_with_mode(
                 frames,
                 styles,
-                client,
+                client=client,
                 mode=task_mode,
                 model=model,
                 model_vision=model_vision,
                 model_style=model_style,
+                client_vision=client_vision or client,
+                client_style=client_style or client,
                 max_retries=max_retries,
             )
         except Exception as e:
@@ -179,10 +181,23 @@ def process_tasks(tasks, max_workers=10, caption_mode=DEFAULT_BATCH_CAPTION_MODE
             f"Unknown caption mode '{caption_mode}'. Expected one of: {', '.join(CAPTION_MODES)}"
         )
 
-    client = OpenAI(
+    # Create Fireworks client for vision
+    client_fireworks = OpenAI(
         api_key=api_key,
         base_url=base_url,
     )
+    
+    # Create Gemini client if using Gemini for styles
+    client_gemini = None
+    if "gemini" in model_style.lower():
+        gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        gemini_base_url = os.environ.get("GEMINI_BASE_URL")
+        if not gemini_api_key or not gemini_base_url:
+            raise RuntimeError("GEMINI_API_KEY and GEMINI_BASE_URL required for Gemini style model")
+        client_gemini = OpenAI(api_key=gemini_api_key, base_url=gemini_base_url)
+    
+    # Default to Fireworks client for backward compatibility
+    client_style = client_gemini if client_gemini else client_fireworks
 
     results = []
     failed = 0
@@ -191,11 +206,13 @@ def process_tasks(tasks, max_workers=10, caption_mode=DEFAULT_BATCH_CAPTION_MODE
             executor.submit(
                 process_one_task,
                 task,
-                client,
+                client_fireworks,
                 model,
                 caption_mode,
                 model_vision=model_vision,
                 model_style=model_style,
+                client_vision=client_fireworks,
+                client_style=client_style,
             ): task
             for task in tasks
         }
