@@ -57,7 +57,7 @@ CAPTION_MODE = normalize_caption_mode(os.environ.get("CAPTION_MODE", DEFAULT_CAP
 
 DEFAULT_INPUT_PATH = "/input/tasks.json"
 DEFAULT_OUTPUT_PATH = "/output/results.json"
-TASK_TIMEOUT = 30  # Timeout per task in seconds
+TASK_TIMEOUT = int(os.environ.get("TASK_TIMEOUT", "180"))  # Timeout per task in seconds (180s for ccot which needs 2+ API calls)
 
 
 def download_video(url, dest_path, timeout=30, max_retries=3):
@@ -110,28 +110,51 @@ def process_one_task(task, client, model, caption_mode=CAPTION_MODE, max_retries
     tmp_path = tempfile.mktemp(suffix=suffix)
 
     try:
-        if parsed.scheme in ("http", "https"):
-            download_video(video_url, tmp_path, timeout=30, max_retries=max_retries)
-            video_path = tmp_path
-        else:
-            video_path = video_url
+        try:
+            if parsed.scheme in ("http", "https"):
+                download_video(video_url, tmp_path, timeout=30, max_retries=max_retries)
+                video_path = tmp_path
+            else:
+                video_path = video_url
+        except Exception as e:
+            print(f"[Error downloading video: {type(e).__name__}]", file=sys.stderr)
+            raise
 
-        frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
-        print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
+        try:
+            frames = extract_frames(video_path, num_frames=NUM_FRAMES, fps=FRAME_FPS, max_frames=MAX_FRAMES)
+            print(f"[{len(frames)} frames sampled for {task_id}]", file=sys.stderr)
+        except Exception as e:
+            print(f"[Error extracting frames: {type(e).__name__}]", file=sys.stderr)
+            raise
 
-        captioner = caption_all_styles_ccot if caption_mode == "ccot" else caption_all_styles_zero_shot
-        captions = captioner(frames, styles, client, model=model, max_retries=max_retries)
-        for style, text in captions.items():
-            print(f"  {task_id} {style}: {text}", file=sys.stderr)
+        try:
+            captioner = caption_all_styles_ccot if caption_mode == "ccot" else caption_all_styles_zero_shot
+            captions = captioner(frames, styles, client, model=model, max_retries=max_retries)
+            for style, text in captions.items():
+                print(f"  {task_id} {style}: {text}", file=sys.stderr)
+        except Exception as e:
+            print(f"[Error generating captions: {type(e).__name__}]", file=sys.stderr)
+            raise
 
         return {"task_id": task_id, "captions": captions}
+    except Exception as e:
+        # Return empty captions for all styles instead of crashing
+        print(f"Task {task_id} failed: {type(e).__name__}", file=sys.stderr)
+        return {"task_id": task_id, "captions": {style: "" for style in STYLES}}
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass  # Ignore cleanup errors
 
 
-def process_tasks(tasks, max_workers=10, caption_mode=CAPTION_MODE):
+def process_tasks(tasks, max_workers=None, caption_mode=CAPTION_MODE):
     """Process tasks in parallel with a thread pool."""
+    # Use max_workers from environment if not specified
+    if max_workers is None:
+        max_workers = int(os.environ.get("MAX_WORKERS", "2"))
+    
     # Check for required environment variables
     required_vars = ["FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS"]
     missing = [var for var in required_vars if not os.environ.get(var)]
@@ -163,21 +186,26 @@ def process_tasks(tasks, max_workers=10, caption_mode=CAPTION_MODE):
         }
         for future in as_completed(futures):
             task_id = futures[future].get("task_id", "unknown")
+            styles = futures[future].get("styles", list(STYLES))
             try:
                 result = future.result(timeout=TASK_TIMEOUT)
                 if result is not None:
                     results.append(result)
                 else:
                     failed += 1
+                    # Return empty captions if result is None
+                    results.append({"task_id": task_id, "captions": {style: "" for style in STYLES}})
             except TimeoutError:
                 # Task exceeded timeout - return empty captions for all 4 styles
                 print(f"Task {task_id} timed out after {TASK_TIMEOUT}s - returning empty captions", file=sys.stderr)
-                styles = futures[future].get("styles", list(STYLES))
-                empty_captions = {style: "" for style in styles}
+                empty_captions = {style: "" for style in STYLES}
                 results.append({"task_id": task_id, "captions": empty_captions})
                 failed += 1
             except Exception as exc:
-                print(f"Task {task_id} failed: {exc}", file=sys.stderr)
+                # Any other error - return empty captions instead of crashing
+                print(f"Task {task_id} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                empty_captions = {style: "" for style in STYLES}
+                results.append({"task_id": task_id, "captions": empty_captions})
                 failed += 1
 
     # Preserve input order.
@@ -200,8 +228,8 @@ def main():
         parser.add_argument(
             "--max-workers",
             type=int,
-            default=int(os.environ.get("MAX_WORKERS", "10")),
-            help="Number of videos to process in parallel (default: 10)",
+            default=int(os.environ.get("MAX_WORKERS", "2")),
+            help="Number of videos to process in parallel (default: 2 for low-resource systems)",
         )
         parser.add_argument(
             "--caption-mode",

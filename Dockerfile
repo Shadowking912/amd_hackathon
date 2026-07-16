@@ -2,9 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install Python dependencies first for better layer caching.
+# Install uv for faster package installation
+RUN pip install --no-cache-dir uv
+
+# Install Python dependencies using uv
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --no-cache-dir -r requirements.txt --system
 
 # Copy application code.
 COPY zero_shot.py .
@@ -14,16 +17,6 @@ COPY entrypoint.py .
 # Copy environment configuration bundled with the container.
 # The judge injects credentials; use your own credentials inside the container.
 COPY .env .
-
-# Frame extraction settings
-# NUM_FRAMES: Number of frames to sample from each video (default: 8)
-# MAX_FRAMES: Maximum frames if using FPS mode (default: 16)
-# FRAME_FPS: Frame sampling rate in fps. Set to None for adaptive mode (default: None)
-# CAPTION_MODE: zero_shot for one-pass captioning, ccot for scene graph then caption
-ENV NUM_FRAMES=16
-ENV MAX_FRAMES=16
-ENV FRAME_FPS=""
-ENV CAPTION_MODE="ccot"
 
 # Create input/output directories for mounted volumes.
 RUN mkdir -p /input /output

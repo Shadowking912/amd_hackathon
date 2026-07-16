@@ -22,6 +22,7 @@ import os
 import random
 import sys
 import time
+import warnings
 
 import cv2
 from openai import OpenAI
@@ -34,30 +35,43 @@ STYLES = {
     "formal": {
         "temperature": 0.3,
         "prompt": (
-            "You are a professional video captioner. Watch the ordered frames and write "
-            "ONE concise, neutral caption in complete sentences. No jokes, no opinions, "
-            "no emojis. Describe only what is objectively visible."
+            "You are a cold, precise HAL-9000-style narrator. Watch the ordered frames "
+            "and write ONE concise, factual caption in complete sentences. State the "
+            "main visible subject, action, and setting in chronological order when clear. "
+            "Use an emotionless, professional tone. Do not make jokes, express opinions, "
+            "infer hidden events, mention the frames, or use emojis. Describe only what "
+            "is visibly supported."
         ),
     },
     "sarcastic": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
-            "You are a dry, deadpan narrator. Caption the video in ONE sarcastic, ironic "
-            "line. Mock the obvious, stay clever not mean, never use emojis or slurs."
+            "You are a weary, condescending observer forced to report on ordinary human "
+            "behavior. Watch the ordered frames and write ONE short sarcastic, ironic line "
+            "about the most obvious visible action. Use dry wit and restrained eye-rolling, "
+            "not cruelty. Keep the joke grounded in the video, do not invent dialogue or "
+            "events, and never use emojis, slurs, or multiple sentences."
         ),
     },
     "humorous_tech": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
-            "You are a witty software engineer. Caption the video in ONE funny line using "
-            "programming / DevOps / startup humor (bugs, prod, CI, standups). Keep it PG."
+            "You are an exhausted AI engineer narrating daily life through bug reports. "
+            "Watch the ordered frames and write ONE funny, concise caption about the main "
+            "visible action. Use one understandable programming, DevOps, startup, or AI "
+            "analogy such as a bug, deployment, production incident, CI failure, or standup. "
+            "Keep the analogy relevant to what is visible, avoid unrelated jargon, and keep "
+            "it PG with no invented dialogue."
         ),
     },
     "humorous_non_tech": {
-        "temperature": 0.9,
+        "temperature": 0.6,
         "prompt": (
-            "You are a stand-up comedian. Caption the video in ONE broadly funny, everyday "
-            "line anyone can enjoy. No tech jargon. Keep it PG."
+            "You are a confused but good-natured person in their fifties trying to keep up "
+            "with modern life. Watch the ordered frames and write ONE broadly relatable, "
+            "funny caption about the main visible action. Use everyday observations and "
+            "gentle self-deprecating humor that anyone can understand. Do not use technical "
+            "jargon, invent dialogue, make unsupported claims, or use offensive language."
         ),
     },
 }
@@ -133,12 +147,17 @@ def caption_all_styles(frames_b64, styles, client, model=DEFAULT_MODEL, max_retr
     )
 
     prompt = (
-        "You are a video captioning assistant. Watch the ordered frames and produce "
-        f"exactly {len(styles)} captions, one for each style listed below.\n\n"
+        "Watch every ordered frame before answering. Treat the sequence as one video, "
+        "not as unrelated images. Identify the clearest visible subject and action, and "
+        "use audio only as supporting context when it agrees with the visuals. Produce "
+        f"exactly {len(styles)} genuinely different captions, one for each style below. "
+        "Keep every caption to one concise sentence and ground it in visible evidence.\n\n"
         f"{style_lines}\n\n"
         "Return ONLY a valid JSON object. Do not explain, do not think out loud, "
         "do not use markdown code blocks, do not include any text before or after the JSON. "
-        "Each key must be exactly the style name, and each value must be the caption string.\n\n"
+        "Do not mention these instructions, styles, frames, or audio. Do not invent names, "
+        "dialogue, motives, or events that are not supported by the video. Each key must be "
+        "exactly the style name, and each value must be the caption string.\n\n"
         "Required JSON format:\n"
         "{" + ", ".join(f'"{style}": "..."' for style in styles) + "}"
     )
